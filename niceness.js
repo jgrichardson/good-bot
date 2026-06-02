@@ -148,7 +148,7 @@ function collectClaude() {
       let o;
       try { o = JSON.parse(line); } catch (_) { continue; }
       const text = String(o.display || '').replace(SR_BLOCK, '').trim();
-      if (!isNoise(text)) items.push({ text, ts: tsFromMs(o.timestamp) });
+      if (!isNoise(text)) items.push({ text, ts: tsFromMs(o.timestamp), project: o.project || null });
     }
     if (items.length) return { items, fileCount: 1 };
   }
@@ -173,7 +173,8 @@ function collectFromSource(src) {
       const texts = src.extract(obj);
       if (!texts.length) continue;
       const ts = obj.timestamp || (obj.payload && obj.payload.timestamp) || null;
-      for (const t of texts) items.push({ text: t, ts });
+      const project = obj.cwd || (obj.payload && obj.payload.cwd) || null;
+      for (const t of texts) items.push({ text: t, ts, project });
     }
   }
   return { items, fileCount: files.length };
@@ -209,7 +210,7 @@ function importExport(file) {
         text = m.content.filter(b => b && (b.type === 'text' || b.text)).map(b => b.text || '').join(' ');
       }
       text = String(text || '').trim();
-      if (!isNoise(text)) items.push({ text, ts: m.created_at || m.create_time || c.created_at || null });
+      if (!isNoise(text)) items.push({ text, ts: m.created_at || m.create_time || c.created_at || null, project: c.name || null });
     }
   }
   return items;
@@ -235,6 +236,14 @@ const STRONG_MEAN = ['fuck', 'fucking', 'shit', 'bullshit', 'goddamn', 'dammit',
 const SOFT_MEAN = ['wtf', 'what the hell', 'are you kidding', 'come on', 'seriously', 'ugh', 'terrible', 'awful',
   'wrong again', 'stop it', 'pay attention', 'listen to me', 'i said', 'why would you', "that's not what",
   'no no no', 'hate this'];
+// Frustration is the most time-variable tone signal — it spikes during hard
+// bugs and crunch where plain politeness barely moves.
+const FRUSTRATION = ['still not', 'still broken', 'still failing', "that's not what", 'i said', 'i already', 'as i said',
+  'not working', "doesn't work", "didn't work", "won't work", 'why is this', 'why does this', 'why are you',
+  'read the', 'i told you', 'for the last time', 'same error', 'again,', 'again.', 'again?', 'no no'];
+const ENTHUSIASM = ['love this', 'awesome', 'amazing', 'perfect', 'beautiful', 'great work', 'nailed it', "let's go", 'lets go', 'woo', 'yes!'];
+const PRESSURE = ['asap', 'urgent', 'right now', 'hurry', 'quickly', 'immediately', 'time sensitive', 'we need this', 'just do', 'just make', 'just fix', 'just get'];
+const ENTH_EMOJI = ['🎉', '🥳', '🙌', '💯', '😊', '🔥'];
 
 function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function countHits(low, terms) {
@@ -266,43 +275,68 @@ function scoreMessage(text) {
   let mean = countHits(low, STRONG_MEAN) * 3 + countHits(low, SOFT_MEAN) + negated;
   if (shouty(text)) mean += 1;
   mean += (text.match(/!{3,}|\?!/g) || []).length;
-  return { nice, mean };
+  const frust = countHits(low, FRUSTRATION) + (low.match(/\?{2,}/g) || []).length;
+  let enth = (text.includes('!') ? 1 : 0) + countHits(low, ENTHUSIASM);
+  for (const e of ENTH_EMOJI) enth += text.split(e).length - 1;
+  const pres = countHits(low, PRESSURE);
+  // mood: warmth minus harshness, with frustration as a softer negative.
+  const mood = nice - mean - 0.6 * frust;
+  return { nice, mean, frust, enth, pres, mood };
 }
 
-function analyze(items) {
-  let totalMean = 0, totalChars = 0, posMsgs = 0, negMsgs = 0;
-  let thanks = 0, pleases = 0, fbombs = 0, shouts = 0, apologies = 0, exclaims = 0;
-  const scored = items.map(it => {
-    const text = typeof it === 'string' ? it : it.text;
-    const ts = typeof it === 'string' ? null : it.ts;
-    const s = scoreMessage(text);
-    totalMean += s.mean; totalChars += text.length;
-    // Classify each message once, so a single gushing message can't outweigh
-    // a hundred curt ones (and vice versa) — closer to real sentiment than
-    // summing every keyword.
-    if (s.nice > s.mean) posMsgs += 1;
-    else if (s.mean > s.nice) negMsgs += 1;
-    const low = text.toLowerCase();
-    pleases += (low.match(/\bplease\b/g) || []).length;
-    thanks += (low.match(/\b(?:thank|thanks|thx|ty)\b/g) || []).length;
-    fbombs += (low.match(/\bfuck\w*\b/g) || []).length;
-    apologies += (low.match(/\b(?:sorry|apolog|my bad)\w*\b/g) || []).length;
-    if (text.includes('!')) exclaims += 1;
-    if (shouty(text)) shouts += 1;
-    return { text, ts, nice: s.nice, mean: s.mean };
-  });
-  const n = Math.max(items.length, 1);
-  // Net share of warm vs. harsh messages, negatives weighted heavier (one
-  // cruel message colors a relationship more than one kind one).
-  const niceness = clamp(50 + ((posMsgs - 1.7 * negMsgs) / n) * 140, 0, 100);
-  const sig = {
-    n: items.length, niceness, avgLen: totalChars / n,
-    posRate: posMsgs / n, negRate: negMsgs / n,
-    pleaseRate: pleases / n, thanksRate: thanks / n, apologyRate: apologies / n,
-    capsRate: shouts / n, exclaimRate: exclaims / n, meanRate: totalMean / n, fbombRate: fbombs / n,
-    hash: Math.round(pleases * 7 + thanks * 13 + items.length * 3 + totalMean * 17 + totalChars),
+// Score one message into a rich, self-contained record so any later
+// aggregation (by month, hour, weekday, project, session) is a cheap sum and
+// never re-runs the regexes.
+function scoreRecord(it) {
+  const text = typeof it === 'string' ? it : it.text;
+  const ts = typeof it === 'string' ? null : it.ts;
+  const project = (typeof it === 'object' && it.project) || null;
+  const s = scoreMessage(text);
+  const low = text.toLowerCase();
+  return {
+    text, ts, project,
+    nice: s.nice, mean: s.mean, frust: s.frust, enth: s.enth, pres: s.pres, mood: s.mood, len: text.length,
+    pleases: (low.match(/\bplease\b/g) || []).length,
+    thanks: (low.match(/\b(?:thank|thanks|thx|ty)\b/g) || []).length,
+    fbomb: (low.match(/\bfuck\w*\b/g) || []).length,
+    apolog: (low.match(/\b(?:sorry|apolog|my bad)\w*\b/g) || []).length,
+    shout: shouty(text) ? 1 : 0,
+    exclaim: text.includes('!') ? 1 : 0,
   };
-  return { scored, niceness, sig, stats: { messages: items.length, pleases, thanks, fbombs, shouts } };
+}
+// Aggregate a set of records into a niceness score + a sig usable by
+// pickPersona + raw tone axes. No re-scoring.
+function aggregate(list) {
+  const n = Math.max(list.length, 1);
+  let nice = 0, mean = 0, thanks = 0, pleases = 0, apolog = 0, fbomb = 0, shout = 0, exclaim = 0, chars = 0, frust = 0, enth = 0, pres = 0, pos = 0, neg = 0;
+  for (const s of list) {
+    nice += s.nice; mean += s.mean; thanks += s.thanks; pleases += s.pleases; apolog += s.apolog;
+    fbomb += s.fbomb; shout += s.shout; exclaim += s.exclaim; chars += s.len; frust += s.frust; enth += s.enth; pres += s.pres;
+    if (s.mood > 0) pos += 1; else if (s.mood < 0) neg += 1;
+  }
+  const niceness = clamp(50 + ((pos - 1.7 * neg) / n) * 140, 0, 100);
+  return {
+    n: list.length, niceness, avgLen: chars / n,
+    pleaseRate: pleases / n, thanksRate: thanks / n, apologyRate: apolog / n,
+    capsRate: shout / n, exclaimRate: exclaim / n, meanRate: mean / n, fbombRate: fbomb / n,
+    frustRate: frust / n, enthRate: enth / n, presRate: pres / n,
+    axes: { warmth: nice / n, frust: frust / n, terse: 1 - clamp((chars / n) / 200, 0, 1), enth: enth / n, pres: pres / n },
+    hash: Math.round(pleases * 7 + thanks * 13 + list.length * 3 + mean * 17 + chars),
+  };
+}
+function analyze(items) {
+  const scored = items.map(scoreRecord);
+  const sig = aggregate(scored);
+  return {
+    scored, niceness: sig.niceness, sig,
+    stats: {
+      messages: scored.length,
+      pleases: scored.reduce((a, s) => a + s.pleases, 0),
+      thanks: scored.reduce((a, s) => a + s.thanks, 0),
+      fbombs: scored.reduce((a, s) => a + s.fbomb, 0),
+      shouts: scored.reduce((a, s) => a + s.shout, 0),
+    },
+  };
 }
 
 function scaleIndex(sig, size) {
@@ -356,82 +390,183 @@ function pickPersona(sig) {
 }
 
 // ---- trends (--timeline) -------------------------------------------------
+// Everything here scores a slice of history RELATIVE TO YOUR OWN BASELINE, so
+// subtle shifts (a few points) read as visible σ moves up/down instead of
+// every bar sitting half-full on an absolute 0-100 scale.
 const SPARK = '▁▂▃▄▅▆▇█';
 function sparkline(vals) {
   if (!vals.length) return '';
   const mn = Math.min(...vals), mx = Math.max(...vals), span = (mx - mn) || 1;
   return vals.map(v => SPARK[clamp(Math.floor(((v - mn) / span) * 8), 0, 7)]).join('');
 }
-function bucketNiceness(group) {
-  return clamp(50 + (group.nice / group.n) * 22 - (group.mean / group.n) * 40, 0, 100);
+const EIGHTHS = '▏▎▍▌▋▊▉█';
+function fmtCount(n) { return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n); }
+function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+function std(a) { if (a.length < 2) return 0; const m = mean(a); return Math.sqrt(mean(a.map(x => (x - m) ** 2))); }
+function ema(a, al) { const o = []; let p = null; for (const v of a) { p = p == null ? v : al * v + (1 - al) * p; o.push(p); } return o; }
+function pad(s, w) { s = String(s); return s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length); }
+function fillBar(frac, width, code) {
+  const f = clamp(frac, 0, 1) * width;
+  const full = Math.floor(f), rem = f - full;
+  const partial = (full < width && rem > 0.06) ? EIGHTHS[clamp(Math.floor(rem * 8), 0, 7)] : '';
+  const empty = Math.max(0, width - full - (partial ? 1 : 0));
+  return color('█'.repeat(full) + partial, code) + color('░'.repeat(empty), '90');
 }
-function groupBy(scored, keyFn) {
+
+function groupRecords(list, keyFn) {
   const m = new Map();
-  for (const s of scored) {
+  for (const s of list) {
     const k = keyFn(s);
     if (k == null) continue;
-    const e = m.get(k) || { n: 0, nice: 0, mean: 0 };
-    e.n++; e.nice += s.nice; e.mean += s.mean;
-    m.set(k, e);
+    (m.get(k) || m.set(k, []).get(k)).push(s);
   }
   return m;
 }
-const EIGHTHS = '▏▎▍▌▋▊▉█';
-function fmtCount(n) {
-  if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
-  return String(n);
+function periodKey(ts, gran) {
+  const d = new Date(ts);
+  if (gran === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const day = (d.getDay() + 6) % 7;
+  const monday = new Date(d); monday.setDate(d.getDate() - day); monday.setHours(0, 0, 0, 0);
+  return monday.toISOString().slice(0, 10);
 }
-// A fixed-width meter, colored by the niceness tier, with eighth-block
-// precision so small differences (52 vs 55) are actually visible.
-function meter(niceness, width = 22) {
-  const f = clamp(niceness, 0, 100) / 100 * width;
-  const full = Math.floor(f);
-  const rem = f - full;
-  const partial = (full < width && rem > 0.06) ? EIGHTHS[clamp(Math.floor(rem * 8), 0, 7)] : '';
-  const empty = Math.max(0, width - full - (partial ? 1 : 0));
-  const p = personaForNiceness(niceness);
-  const code = tierCode(SCALE.indexOf(p), SCALE.length);
-  return color('█'.repeat(full) + partial, code) + color('░'.repeat(empty), '90');
+function periodLabel(key, gran) {
+  if (gran === 'month') { const [y, m] = key.split('-'); return `${MONTHS[+m - 1]} '${y.slice(2)}`; }
+  const d = new Date(key); return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
-function trendRow(label, niceness, n) {
-  const p = personaForNiceness(niceness);
-  const lab = color(label.padEnd(10), '97');
-  const val = color(String(Math.round(niceness)).padStart(3), '1');
-  const who = color(p.emoji + ' ' + p.name, '90');
-  const cnt = n != null ? color(`  (${fmtCount(n)})`, '90') : '';
-  return `      ${lab} ${meter(niceness)} ${val}  ${who}${cnt}`;
+function buildTimeBuckets(scored) {
+  const withTs = scored.filter(s => s.ts);
+  const months = new Set(withTs.map(s => s.ts.slice(0, 7)));
+  const gran = months.size <= 4 ? 'week' : 'month';
+  const minN = Math.max(8, Math.round(withTs.length * 0.01));
+  const map = groupRecords(withTs, s => periodKey(s.ts, gran));
+  const periods = [...map.entries()].filter(([, l]) => l.length >= minN)
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([key, list]) => ({ key, label: periodLabel(key, gran), list }));
+  return { gran, periods };
 }
-function renderTrends(scored) {
-  const out = [''];
-  out.push(color('   📈 Niceness over time', '1;97'));
-  const months = [...groupBy(scored, s => (s.ts ? s.ts.slice(0, 7) : null)).entries()]
-    .filter(([, e]) => e.n >= 5).sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  if (months.length >= 2) {
-    for (const [k, e] of months) {
-      const [y, m] = k.split('-');
-      out.push(trendRow(`${MONTHS[+m - 1]} ${y}`, bucketNiceness(e), e.n));
-    }
-  } else {
-    out.push(color('      (need at least two months of history for a trend)', '90'));
-  }
 
-  const BINS = [['night', 0, 6], ['morning', 6, 12], ['afternoon', 12, 18], ['evening', 18, 24]];
-  const byHour = groupBy(scored, s => (s.ts ? new Date(s.ts).getHours() : null));
-  const rows = [];
-  for (const [name, lo, hi] of BINS) {
-    let n = 0, nice = 0, mean = 0;
-    for (let h = lo; h < hi; h++) {
-      const e = byHour.get(h);
-      if (e) { n += e.n; nice += e.nice; mean += e.mean; }
+const AXIS_WORD = {
+  warmth: ['warmer', 'cooler'], frust: ['tenser', 'calmer'], terse: ['terser', 'chattier'],
+  enth: ['more upbeat', 'flatter'], pres: ['more rushed', 'more relaxed'],
+};
+function axesBaseline(arr) {
+  const r = {};
+  for (const k of Object.keys(AXIS_WORD)) { const xs = arr.map(a => a[k]); r[k] = { mean: mean(xs), std: Math.max(std(xs), 1e-9) }; }
+  return r;
+}
+function dominantAxis(axes, base) {
+  let best = { axis: 'warmth', z: 0 };
+  for (const k of Object.keys(base)) { const z = (axes[k] - base[k].mean) / base[k].std; if (Math.abs(z) > Math.abs(best.z)) best = { axis: k, z }; }
+  return best;
+}
+function zLabel(z, dom) {
+  if (Math.abs(z) < 0.4) return color('≈ baseline', '90');
+  const word = AXIS_WORD[dom.axis][dom.z >= 0 ? 0 : 1];
+  return color(`${z > 0 ? '▲' : '▼'} ${Math.abs(z).toFixed(1)}σ ${word}`, z > 0 ? '92' : '91');
+}
+function relRow(label, val, lo, hi, persona, z, dom, n) {
+  const code = tierCode(SCALE.indexOf(persona), SCALE.length);
+  const bar = fillBar((val - lo) / ((hi - lo) || 1), 20, code);
+  const cnt = n != null ? ' ' + color(`(${fmtCount(n)})`, '90') : '';
+  return `      ${color(pad(label, 10), '97')} ${bar} ${persona.emoji} ${color(pad(persona.name, 14), '90')} ${zLabel(z, dom)}${cnt}`;
+}
+// Render one dimension (time / hour / weekday / project) as baseline-relative
+// rows. `values` defaults to each group's own niceness; pass it explicitly to
+// substitute smoothed or AI-rated scores.
+function renderDim(title, groups, baseline, values) {
+  if (groups.length < 2) return [];
+  const ag = groups.map(g => aggregate(g.list));
+  if (!values) values = ag.map(a => a.niceness);
+  const sd = Math.max(std(values), 2);
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const [blo, bhi] = (hi - lo < 4) ? [baseline - 6, baseline + 6] : [lo, hi];
+  const ab = axesBaseline(ag.map(a => a.axes));
+  const out = ['', color('   ' + title, '1;97')];
+  groups.forEach((g, i) => {
+    out.push(relRow(g.label, values[i], blo, bhi, pickPersona(ag[i]), (values[i] - baseline) / sd, dominantAxis(ag[i].axes, ab), g.list.length));
+  });
+  return out;
+}
+
+const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function todGroups(withTs) {
+  const minN = Math.max(8, Math.round(withTs.length * 0.01));
+  const byH = groupRecords(withTs, s => new Date(s.ts).getHours());
+  const groups = [];
+  for (const [name, lo, hi] of [['night', 0, 6], ['morning', 6, 12], ['afternoon', 12, 18], ['evening', 18, 24]]) {
+    let list = [];
+    for (let h = lo; h < hi; h++) { const e = byH.get(h); if (e) list = list.concat(e); }
+    if (list.length >= minN) groups.push({ label: name, list });
+  }
+  return groups;
+}
+function weekdayGroups(withTs) {
+  const minN = Math.max(8, Math.round(withTs.length * 0.01));
+  const byD = groupRecords(withTs, s => (new Date(s.ts).getDay() + 6) % 7);
+  const groups = [];
+  for (let d = 0; d < 7; d++) { const e = byD.get(d); if (e && e.length >= minN) groups.push({ label: WD[d], list: e }); }
+  return groups;
+}
+function projectGroups(scored) {
+  const minN = Math.max(8, Math.round(scored.length * 0.01));
+  const m = groupRecords(scored.filter(s => s.project), s => String(s.project).split('/').filter(Boolean).pop());
+  return [...m.entries()].filter(([, l]) => l.length >= minN).sort((a, b) => b[1].length - a[1].length).slice(0, 6).map(([k, l]) => ({ label: k, list: l }));
+}
+function renderPatience(withTs) {
+  const sorted = withTs.slice().sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  const GAP = 30 * 60 * 1000;
+  const sessions = [];
+  let cur = [], last = null;
+  for (const s of sorted) { const t = Date.parse(s.ts); if (last != null && t - last > GAP) { if (cur.length) sessions.push(cur); cur = []; } cur.push(s); last = t; }
+  if (cur.length) sessions.push(cur);
+  const starts = [], ends = [];
+  for (const ss of sessions) { if (ss.length < 6) continue; const k = Math.max(1, Math.floor(ss.length / 3)); starts.push(aggregate(ss.slice(0, k)).niceness); ends.push(aggregate(ss.slice(-k)).niceness); }
+  if (starts.length < 5) return [];
+  const s0 = mean(starts), s1 = mean(ends), d = s1 - s0;
+  const ps = personaForNiceness(s0), pe = personaForNiceness(s1);
+  const note = d < -2 ? `you cool off as a session drags on (${Math.round(d)} pts)` : d > 2 ? `you warm up as a session goes on (+${Math.round(d)} pts)` : 'your tone holds steady through a session';
+  return ['', color('   🧵 Patience within a session', '1;97'),
+    `      ${color(pad('start', 10), '97')} ${ps.emoji} ${color(ps.name, '90')}  →  ${pad('end', 5)} ${pe.emoji} ${color(pe.name, '90')}`,
+    '   ' + color(note + ` (across ${starts.length} sessions)`, '90')];
+}
+function volatilityWord(values) {
+  const v = std(values);
+  return (v < 3 ? 'Very even-keeled' : v < 7 ? 'Some ebb and flow' : 'Moody — big swings') + ` (±${v.toFixed(0)} pts)`;
+}
+
+// One extra Claude call that rates each period's true sentiment 0-100.
+function aiPeriodScorer(periods) {
+  const blocks = periods.map((p, i) => `[P${i}] ${p.label}\n${buildSample(p.list, 1400).slice(0, 6).join(' | ')}`).join('\n---\n');
+  const prompt = `Rate how warmly the engineer treats their AI assistant in EACH labeled period below, 0-100 (0=hostile, 50=neutral/transactional, 100=warm). Read genuine tone, not keyword counts. Output ONE line per period, exactly "P<i>: <number>", nothing else.\n---\n${blocks}`;
+  const res = spawnSync('claude', ['-p', '--model', MODEL], { input: prompt, encoding: 'utf8', maxBuffer: 1 << 24 });
+  if (res.status !== 0 || !res.stdout) return null;
+  const m = new Map();
+  for (const mt of res.stdout.matchAll(/^P(\d+):\s*(\d+(?:\.\d+)?)/gm)) { const i = +mt[1]; if (periods[i]) m.set(periods[i].key, clamp(+mt[2], 0, 100)); }
+  return m.size ? m : null;
+}
+
+function renderTrends(scored, baseline, periodScorer) {
+  const withTs = scored.filter(s => s.ts);
+  if (withTs.length < 10) return color('\n   (not enough timestamped history for trends)', '90');
+  const out = [];
+  const { gran, periods } = buildTimeBuckets(scored);
+  if (periods.length >= 2) {
+    const ag = periods.map(p => aggregate(p.list));
+    let values = ag.map(a => a.niceness);
+    if (periodScorer) {
+      let m = null; try { m = periodScorer(periods); } catch (_) { m = null; }
+      if (m) values = periods.map((p, i) => (m.get(p.key) != null ? m.get(p.key) : ag[i].niceness));
     }
-    if (n >= 5) rows.push(trendRow(name, bucketNiceness({ n, nice, mean }), n));
+    values = ema(values, 0.6);
+    out.push(...renderDim(`Niceness vs your baseline (${Math.round(baseline)}) — by ${gran}${periodScorer ? ' · AI-rated' : ''}`, periods, baseline, values));
+    let hi = 0, loI = 0;
+    values.forEach((v, i) => { if (v > values[hi]) hi = i; if (v < values[loI]) loI = i; });
+    out.push('   ' + color(`${volatilityWord(values)} · warmest ${periods[hi].label}, coolest ${periods[loI].label}`, '90'));
   }
-  if (rows.length >= 2) {
-    out.push('');
-    out.push(color('   🕑 Niceness by time of day', '1;97'));
-    out.push(...rows);
-  }
-  return out.join('\n');
+  out.push(...renderDim('By time of day', todGroups(withTs), baseline));
+  out.push(...renderDim('By day of week', weekdayGroups(withTs), baseline));
+  out.push(...renderDim('By project', projectGroups(scored), baseline));
+  out.push(...renderPatience(withTs));
+  return '\n' + out.join('\n');
 }
 
 // ---- card rendering ------------------------------------------------------
@@ -756,7 +891,10 @@ function main() {
 
   const text = renderCard(card.persona, card.verdict, card.assessment, card.exhibits, stats, span);
   process.stdout.write(text + '\n');
-  if (wantTimeline) process.stdout.write(renderTrends(analysis.scored) + '\n');
+  if (wantTimeline) {
+    if (useAi) process.stderr.write('Rating each period with Claude…\n');
+    process.stdout.write(renderTrends(analysis.scored, analysis.niceness, useAi ? aiPeriodScorer : null) + '\n');
+  }
 
   if (wantSvg) {
     const svg = renderSvg(card.persona, card.verdict, card.exhibits, stats, span);
