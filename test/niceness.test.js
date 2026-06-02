@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   sanitize, extractTexts, scoreMessage, shouty, analyze,
-  scaleIndex, parseLabeled, matchPersona, PERSONAS, SPICE,
+  scaleIndex, parseLabeled, matchPersona, cleanExhibit, PERSONAS, SPICE,
 } = require('../niceness.js');
 
 // ---- redaction: the privacy guarantee ----------------------------------
@@ -112,6 +112,20 @@ test('parseLabeled parses a well-formed response and rejects garbage', () => {
 test('matchPersona maps a name back to a rank on the active scale', () => {
   assert.equal(matchPersona('Darth Vader').name, 'Darth Vader');
   assert.equal(matchPersona('not a persona'), null);
+});
+
+// ---- exhibit tidying (fixes off-screen + double-quoted quotes) ----------
+test('cleanExhibit strips wrapping quotes so the card never doubles them', () => {
+  assert.equal(cleanExhibit('"CONTINUE"'), 'CONTINUE');
+  assert.equal(cleanExhibit('“do the thing”'), 'do the thing');
+});
+
+test('cleanExhibit caps width and collapses whitespace', () => {
+  const long = 'a'.repeat(200);
+  const out = cleanExhibit(long);
+  assert.ok(out.length <= 52);
+  assert.ok(out.endsWith('…'));
+  assert.equal(cleanExhibit('lots   of\n\nspace'), 'lots of space');
 });
 
 // ---- ladders ------------------------------------------------------------

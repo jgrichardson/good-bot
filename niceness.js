@@ -393,6 +393,16 @@ function matchPersona(name) {
          SCALE.find(p => p.name.toLowerCase().includes(clean)) || null;
 }
 
+// Tidy a quote for the card: collapse whitespace, strip any wrapping quotes
+// (so we never double them), and cap width so it can't run off the edge.
+const EXHIBIT_MAX = 52;
+function cleanExhibit(s, max = EXHIBIT_MAX) {
+  let t = String(s).replace(/\s+/g, ' ').trim();
+  t = t.replace(/^["“”'`]+/, '').replace(/["“”'`]+$/, '').trim();
+  if (t.length > max) t = t.slice(0, max - 1).trimEnd() + '…';
+  return t;
+}
+
 function wrap(text, width = 58) {
   const words = String(text).split(/\s+/);
   const lines = [];
@@ -440,7 +450,7 @@ function renderCard(persona, verdict, assessment, exhibits, stats, span) {
   if (exhibits && exhibits.length) {
     out.push('');
     out.push(color('   📋 Exhibits entered into evidence:', '1;90'));
-    for (const e of exhibits.slice(0, 3)) out.push(color(`      • “${e}”`, '90'));
+    for (const e of exhibits.slice(0, 3)) out.push(color(`      • “${cleanExhibit(e)}”`, '90'));
   }
   out.push('');
   out.push(color('   ────────────────────────────────────────────────', '90'));
@@ -577,5 +587,5 @@ if (require.main === module) main();
 // Exported for tests; the file still runs as a CLI when invoked directly.
 module.exports = {
   sanitize, extractTexts, scoreMessage, shouty, analyze, scaleIndex,
-  personaFor, parseLabeled, matchPersona, PERSONAS, SPICE, SCALES,
+  personaFor, parseLabeled, matchPersona, cleanExhibit, PERSONAS, SPICE, SCALES,
 };
