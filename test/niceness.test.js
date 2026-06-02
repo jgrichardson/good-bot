@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
-  scaleIndex, parseLabeled, matchPersona, cleanExhibit, sparkline, SCALES,
+  scaleIndex, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, SCALES,
 } = require('../niceness.js');
 const PERSONAS = SCALES.people;
 const SPICE = SCALES.spice;
@@ -92,6 +92,16 @@ test('scaleIndex puts saints near the nice end and tyrants near the mean end', (
   const tyrant = { niceness: 5, fbombRate: 0.2, capsRate: 0.2, meanRate: 0.8, apologyRate: 0, thanksRate: 0, pleaseRate: 0, hash: 0 };
   assert.ok(scaleIndex(saint, PERSONAS.length) <= 3);
   assert.ok(scaleIndex(tyrant, PERSONAS.length) >= PERSONAS.length - 3);
+});
+
+test('pickPersona returns a real persona and respects the extremes', () => {
+  const saint = { niceness: 96, fbombRate: 0, capsRate: 0, meanRate: 0, apologyRate: 0.1, thanksRate: 0.3, pleaseRate: 0.3, avgLen: 200, exclaimRate: 0.1, hash: 0 };
+  const tyrant = { niceness: 3, fbombRate: 0.2, capsRate: 0.2, meanRate: 0.8, apologyRate: 0, thanksRate: 0, pleaseRate: 0, avgLen: 20, exclaimRate: 0.1, hash: 0 };
+  assert.ok(SCALES.people.includes(pickPersona(saint)));
+  assert.equal(pickPersona(tyrant).name, 'Darth Vader');
+  // a terse, neutral style should read as Ron Swanson, not generic Switzerland
+  const terse = { niceness: 50, fbombRate: 0, capsRate: 0, meanRate: 0.05, apologyRate: 0, thanksRate: 0.01, pleaseRate: 0.05, avgLen: 45, exclaimRate: 0.05, hash: 0 };
+  assert.equal(pickPersona(terse).name, 'Ron Swanson');
 });
 
 test('scaleIndex stays in bounds for both scales', () => {

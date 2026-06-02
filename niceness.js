@@ -41,9 +41,10 @@ function argVal(name) {
   if (i === -1) return null;
   return a[i].includes('=') ? a[i].split('=').slice(1).join('=') : a[i + 1];
 }
-const SCALE_NAME = argVal('--scale') || process.env.NICENESS_SCALE || 'people';
-const SCALE = SCALES[SCALE_NAME] || SCALES.people;
-const META = SCALE_META[SCALE_NAME] || SCALE_META.people;
+let SCALE_NAME = argVal('--scale') || process.env.NICENESS_SCALE || 'people';
+let SCALE = SCALES[SCALE_NAME] || SCALES.people;
+let META = SCALE_META[SCALE_NAME] || SCALE_META.people;
+function useScale(name) { SCALE_NAME = name; SCALE = SCALES[name] || SCALES.people; META = SCALE_META[name] || SCALE_META.people; }
 
 function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
@@ -127,8 +128,35 @@ function walk(dir) {
   return out;
 }
 
+function tsFromMs(ms) {
+  const n = Number(ms);
+  return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
+}
+
+// Claude Code's prompt log persists long-term (it is NOT pruned by the
+// transcript retention that wipes ~/.claude/projects after a month), so it's
+// the best "all time" source. Fall back to the recent project transcripts if
+// the log is missing (e.g. a fresh or non-default install).
+function collectClaude() {
+  const hist = path.join(os.homedir(), '.claude', 'history.jsonl');
+  let data;
+  try { data = fs.readFileSync(hist, 'utf8'); } catch (_) { data = null; }
+  if (data) {
+    const items = [];
+    for (const line of data.split('\n')) {
+      if (!line) continue;
+      let o;
+      try { o = JSON.parse(line); } catch (_) { continue; }
+      const text = String(o.display || '').replace(SR_BLOCK, '').trim();
+      if (!isNoise(text)) items.push({ text, ts: tsFromMs(o.timestamp) });
+    }
+    if (items.length) return { items, fileCount: 1 };
+  }
+  return collectFromSource({ root: path.join(os.homedir(), '.claude', 'projects'), extract: extractTexts });
+}
+
 const SOURCES = {
-  claude: { label: 'Claude Code', root: path.join(os.homedir(), '.claude', 'projects'), extract: extractTexts },
+  claude: { label: 'Claude Code', collect: collectClaude },
   codex: { label: 'Codex', root: path.join(os.homedir(), '.codex', 'sessions'), extract: extractCodex },
 };
 
@@ -159,7 +187,7 @@ function collectMessages(which) {
   for (const name of wanted) {
     const src = SOURCES[name];
     if (!src) continue;
-    const r = collectFromSource(src);
+    const r = src.collect ? src.collect() : collectFromSource(src);
     if (r.items.length) { counts[src.label] = r.items.length; items.push(...r.items); }
     fileCount += r.fileCount;
   }
@@ -275,6 +303,39 @@ function scaleIndex(sig, size) {
 function personaFor(sig) { return SCALE[scaleIndex(sig, SCALE.length)]; }
 function personaForNiceness(niceness) {
   return SCALE[scaleIndex({ niceness, fbombRate: 0, capsRate: 0, meanRate: 0, apologyRate: 0, thanksRate: 0, pleaseRate: 0, hash: 1 }, SCALE.length)];
+}
+
+// The niceness ladder is 1-D, so most people pile up near the neutral middle.
+// On the flagship `people` scale we nudge *within the band* toward a persona
+// that matches the dominant style — terse, apologetic, hype, CAPS — so the
+// result has personality instead of everyone reading as "Switzerland".
+function nameIdx(name) { return SCALE.findIndex(p => p.name === name); }
+function styleRefine(idx, sig) {
+  if (SCALE_NAME !== 'people' || SCALE.length < 22) return idx;
+  const f = idx / (SCALE.length - 1); // 0 = nicest … 1 = meanest
+  if (f >= 0.62) { // mean half — let real venom pick the villain
+    if (sig.fbombRate > 0.04) return nameIdx('Darth Vader');
+    if (sig.fbombRate > 0.012) return nameIdx('Gollum');
+    if (sig.capsRate > 0.05) return nameIdx('Drill Sergeant');
+    return idx;
+  }
+  if (f >= 0.40) { // neutral band — terseness/coolness decides the flavor
+    if (sig.capsRate > 0.06) return nameIdx('Drill Sergeant');
+    if (sig.avgLen < 32) return nameIdx('Clint Eastwood');
+    if (sig.avgLen < 80) return nameIdx('Ron Swanson');
+    if (sig.meanRate > 0.20) return nameIdx('Spock');
+    return nameIdx('Switzerland');
+  }
+  // nice half — warmth style decides
+  if (sig.apologyRate > 0.05) return nameIdx('The Canadian');
+  if (sig.exclaimRate > 0.35 && sig.thanksRate > 0.12) return nameIdx('Golden Retriever');
+  if (sig.exclaimRate > 0.22) return nameIdx('Oprah');
+  if (sig.thanksRate > 0.20) return nameIdx('Dolly Parton');
+  return idx;
+}
+function pickPersona(sig) {
+  const idx = styleRefine(scaleIndex(sig, SCALE.length), sig);
+  return SCALE[clamp(idx, 0, SCALE.length - 1)];
 }
 
 // ---- trends (--timeline) -------------------------------------------------
@@ -590,6 +651,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
+  good-bot --random            roll a random rank (and random scale) — run again for another
   good-bot --source <name>     claude | codex | all   (default: all found locally)
   good-bot --import <file>     grade a Claude Desktop/web/Cowork "Export Data" conversations.json
   good-bot --demo              preview every rank on the current scale
@@ -612,8 +674,16 @@ function main() {
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
   const noCopy = argv.includes('--no-copy');
+  const random = argv.includes('--random');
   const importPath = argv.includes('--import') ? argVal('--import') : null;
   const source = argVal('--source');
+
+  // --random with no explicit scale also randomizes which ladder you get.
+  const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
+  if (random && !explicitScale) {
+    const keys = Object.keys(SCALES);
+    useScale(keys[Math.floor(Math.random() * keys.length)]);
+  }
 
   let items, fileCount = 0, counts = {}, originLabel;
   if (importPath) {
@@ -642,19 +712,23 @@ function main() {
   if (sampleOnly) { emitSample(analysis, stats, span); return; }
 
   let card = null;
-  if (useAi) {
+  if (random) {
+    const idx = Math.floor(Math.random() * SCALE.length);
+    const persona = SCALE[idx];
+    card = { persona, verdict: persona.tag, assessment: persona.blurb, exhibits: localExhibits(analysis.scored, idx) };
+  } else if (useAi) {
     process.stderr.write('\n⚠️  --ai sends a REDACTED sample of your own messages to your local `claude`.\n');
     process.stderr.write('Asking Claude to grade you (one short call)… ');
     const raw = llmCard(analysis, buildSample(analysis.scored, SAMPLE_CHAR_BUDGET), stats);
     const parsed = raw && parseLabeled(raw);
     if (parsed) {
-      const persona = matchPersona(parsed.persona) || personaFor(analysis.sig);
+      const persona = matchPersona(parsed.persona) || pickPersona(analysis.sig);
       card = { persona, verdict: parsed.verdict, assessment: parsed.assessment, exhibits: parsed.exhibits };
       process.stderr.write('done.\n');
     } else { process.stderr.write('no/odd response — falling back to local scoring.\n'); }
   }
   if (!card) {
-    const persona = personaFor(analysis.sig);
+    const persona = pickPersona(analysis.sig);
     const idx = SCALE.indexOf(persona);
     card = { persona, verdict: persona.tag, assessment: persona.blurb, exhibits: localExhibits(analysis.scored, idx) };
   }
@@ -677,13 +751,14 @@ function main() {
   if (!noCopy) copyClipboard(plain);
   try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
   process.stderr.write(`\n(plain-text ${noCopy ? '' : 'copied to your clipboard · '}saved to my-niceness-card.txt)\n`);
-  if (!useAi) process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected. (--ai opts into a redacted local-LLM roast.)\n');
+  if (random) process.stderr.write(`🎲 random pick on the ${SCALE_NAME} scale — run again for another.\n`);
+  else if (!useAi) process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected. (--ai opts into a redacted local-LLM roast.)\n');
 }
 
 if (require.main === module) main();
 
 module.exports = {
   sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
-  scaleIndex, personaFor, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
+  scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
   badgeMarkdown, SCALES, SCALE, SCALE_NAME,
 };
