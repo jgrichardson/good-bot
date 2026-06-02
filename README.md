@@ -15,10 +15,13 @@
 You already have Node (Claude Code runs on it), so there's nothing to install:
 
 ```bash
-npx github:jgrichardson/good-bot
+npx good-bot                      # once published to npm
+npx github:jgrichardson/good-bot  # works right now, straight from GitHub
 ```
 
-It scans `~/.claude/projects`, grades you locally, prints your card, and copies a plain-text version to your clipboard.
+It scans your local AI-assistant history (Claude Code and Codex), grades you locally, prints your card, and copies a plain-text version to your clipboard.
+
+> On **Claude Desktop, web, or Cowork**? Those keep history server-side, so export it (claude.ai → Settings → *Export data*) and run `good-bot --import conversations.json`.
 
 ### Inside a Claude Code session
 

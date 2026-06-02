@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "How nice are you to your AI? A shareable report card from your local Claude Code history.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {

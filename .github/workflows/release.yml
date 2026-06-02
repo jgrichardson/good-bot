@@ -1,0 +1,31 @@
+name: Publish to npm
+
+# Publishes the package to npm when you push a version tag (e.g. v0.2.0).
+# One-time setup: add an automation token as the repo secret NPM_TOKEN
+# (npmjs.com → Access Tokens → Generate → "Automation"), then:
+#   git tag v0.2.0 && git push origin v0.2.0
+# After it publishes once, anyone can run:  npx good-bot
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Test
+        run: npm test
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

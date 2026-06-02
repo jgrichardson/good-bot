@@ -1,7 +1,7 @@
 {
   "name": "good-bot",
   "description": "How nice are you to your AI? A shareable report card (Mr. Rogers → Darth Vader) graded from your local Claude Code history. 100% local by default.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Greg Richardson",
     "url": "https://github.com/jgrichardson"

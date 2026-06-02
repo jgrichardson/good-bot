@@ -3,9 +3,11 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  sanitize, extractTexts, scoreMessage, shouty, analyze,
-  scaleIndex, parseLabeled, matchPersona, cleanExhibit, PERSONAS, SPICE,
+  sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
+  scaleIndex, parseLabeled, matchPersona, cleanExhibit, sparkline, SCALES,
 } = require('../niceness.js');
+const PERSONAS = SCALES.people;
+const SPICE = SCALES.spice;
 
 // ---- redaction: the privacy guarantee ----------------------------------
 test('sanitize redacts emails, links, paths, secrets, ips, phones, numbers', () => {
@@ -128,12 +130,48 @@ test('cleanExhibit caps width and collapses whitespace', () => {
   assert.equal(cleanExhibit('lots   of\n\nspace'), 'lots of space');
 });
 
+// ---- multi-source ingestion ---------------------------------------------
+test('extractCodex pulls human user_message events and strips injected wrappers', () => {
+  assert.deepStrictEqual(
+    extractCodex({ type: 'event_msg', payload: { type: 'user_message', message: '<system_instruction>be good</system_instruction>\n\nFix the auth bug' } }),
+    ['Fix the auth bug'],
+  );
+  assert.deepStrictEqual(extractCodex({ type: 'event_msg', payload: { type: 'exec_command_end' } }), []);
+  assert.deepStrictEqual(extractCodex({ type: 'response_item', payload: {} }), []);
+});
+
+test('importExport parses a Claude data-export shape (human turns only)', () => {
+  const data = [{
+    name: 'chat', created_at: '2026-01-01T00:00:00Z',
+    chat_messages: [
+      { sender: 'human', text: 'please refactor this', created_at: '2026-01-01T00:00:00Z' },
+      { sender: 'assistant', text: 'sure' },
+      { sender: 'human', content: [{ type: 'text', text: 'thanks!' }] },
+    ],
+  }];
+  const tmp = require('node:path').join(require('node:os').tmpdir(), `gb-export-${process.pid}.json`);
+  require('node:fs').writeFileSync(tmp, JSON.stringify(data));
+  const items = importExport(tmp);
+  require('node:fs').unlinkSync(tmp);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].text, 'please refactor this');
+});
+
+// ---- trends -------------------------------------------------------------
+test('sparkline maps a series into block glyphs of equal length', () => {
+  const s = sparkline([0, 25, 50, 75, 100]);
+  assert.equal(s.length, 5);
+  assert.equal(s[0], '▁');
+  assert.equal(s[4], '█');
+});
+
 // ---- ladders ------------------------------------------------------------
-test('both ladders are non-empty and well-formed', () => {
-  for (const scale of [PERSONAS, SPICE]) {
-    assert.ok(scale.length >= 20);
+test('every scale is non-empty and well-formed', () => {
+  for (const scale of Object.values(SCALES)) {
+    assert.ok(scale.length >= 4);
     for (const p of scale) {
       assert.ok(p.name && p.emoji && p.tag && p.blurb && p.face);
+      assert.ok(['happy', 'neutral', 'mean'].includes(p.face));
     }
   }
 });

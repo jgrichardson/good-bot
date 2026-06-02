@@ -1,4 +1,6 @@
 node_modules/
 my-niceness-card.txt
+good-bot-card.svg
+good-bot-card.png
 *.log
 .DS_Store
