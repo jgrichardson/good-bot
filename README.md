@@ -73,14 +73,6 @@ Full details in [PRIVACY.md](PRIVACY.md). It's one short, dependency-free file �
 
 ---
 
-## 🎭 The ladder
-
-Where will you land? Nicest → meanest:
-
-🧥 Mr. Rogers · 🎨 Bob Ross · 🦋 Dolly Parton · 🕶️ Keanu Reeves · ⚽ Ted Lasso · 📣 Oprah · 🐶 Golden Retriever · 🍿 Tom Hanks · 🍁 The Canadian · ✂️ Tim Gunn · 🧊 Switzerland · 🖖 Spock · 🥓 Ron Swanson · 🤠 Clint Eastwood · 🍎 Steve Jobs · 🎤 Simon Cowell · 🧛 Miranda Priestly · 🔥 Gordon Ramsay · 🏈 Bill Belichick · 🪖 Drill Sergeant · 💍 Gollum · 🖤 Darth Vader
-
----
-
 ## 🤔 How it works
 
 1. Walks every Claude Code session you've ever had (`~/.claude/projects/**/*.jsonl`).
