@@ -62,6 +62,16 @@ It scans your local AI-assistant history (Claude Code and Codex), grades you loc
 
 In a real terminal it's in full color, with the robot's face changing by mood.
 
+### ✨ Wrapped
+
+Make a share-ready poster of your year with your AI — persona, stats, your tone over time, and highlights:
+
+```bash
+npx good-bot --wrapped
+```
+
+Writes `good-bot-wrapped.png` (1080×1920, story format). Post it, tag a teammate, see who got force-choke energy.
+
 ---
 
 ## 🔒 Privacy

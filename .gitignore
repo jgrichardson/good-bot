@@ -2,5 +2,7 @@ node_modules/
 my-niceness-card.txt
 good-bot-card.svg
 good-bot-card.png
+good-bot-wrapped.svg
+good-bot-wrapped.png
 *.log
 .DS_Store

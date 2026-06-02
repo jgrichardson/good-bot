@@ -681,14 +681,15 @@ function renderSvg(persona, verdict, exhibits, stats, span) {
   lines.push('</svg>');
   return lines.join('\n');
 }
-function tryRasterize(svgPath, pngPath) {
+function tryRasterize(svgPath, pngPath, width = 1640) {
+  const w = String(width);
   const attempts = [
-    ['rsvg-convert', ['-w', '1640', '-o', pngPath, svgPath]],
-    ['cairosvg', [svgPath, '-o', pngPath, '--output-width', '1640']],
-    ['resvg', ['-w', '1640', svgPath, pngPath]],
-    ['inkscape', [svgPath, '--export-type=png', `--export-filename=${pngPath}`, '-w', '1640']],
+    ['rsvg-convert', ['-w', w, '-o', pngPath, svgPath]],
+    ['cairosvg', [svgPath, '-o', pngPath, '--output-width', w]],
+    ['resvg', ['-w', w, svgPath, pngPath]],
+    ['inkscape', [svgPath, '--export-type=png', `--export-filename=${pngPath}`, '-w', w]],
   ];
-  if (process.platform === 'darwin') attempts.push(['qlmanage', ['-t', '-s', '1640', '-o', path.dirname(pngPath), svgPath]]);
+  if (process.platform === 'darwin') attempts.push(['qlmanage', ['-t', '-s', w, '-o', path.dirname(pngPath), svgPath]]);
   for (const [cmd, args] of attempts) {
     try {
       const r = spawnSync(cmd, args, { stdio: 'ignore' });
@@ -708,6 +709,122 @@ function badgeMarkdown(persona) {
   const enc = s => encodeURIComponent(String(s).replace(/-/g, '--').replace(/_/g, '__'));
   const url = `https://img.shields.io/badge/${enc('my AI thinks I am a')}-${enc(persona.name)}-${shieldsColor(idx, SCALE.length)}`;
   return `![good-bot](${url})\n\nMarkdown:\n[![good-bot](${url})](https://github.com/${REPO})`;
+}
+
+// ---- "Wrapped" share poster ---------------------------------------------
+function computeWrapped(analysis) {
+  const scored = analysis.scored;
+  const withTs = scored.filter(s => s.ts);
+  const { periods } = buildTimeBuckets(scored);
+  const pdata = periods.map(p => { const a = aggregate(p.list); return { label: p.label, niceness: a.niceness, persona: pickPersona(a) }; });
+  const best = (arr, sel, max) => arr.length ? arr.reduce((a, b) => ((max ? sel(b) > sel(a) : sel(b) < sel(a)) ? b : a)) : null;
+  const tod = todGroups(withTs).map(g => ({ label: g.label, niceness: aggregate(g.list).niceness }));
+  const proj = projectGroups(scored).map(g => { const a = aggregate(g.list); return { label: g.label, niceness: a.niceness, persona: pickPersona(a) }; });
+  const niceM = scored.filter(s => s.nice > 0).sort((a, b) => b.nice - a.nice)[0];
+  const meanM = scored.filter(s => (s.mean + s.frust) > 0).sort((a, b) => (b.mean + b.frust) - (a.mean + a.frust))[0];
+  return {
+    periods: pdata,
+    warmest: best(pdata, p => p.niceness, true), coolest: best(pdata, p => p.niceness, false),
+    spiciest: best(tod, p => p.niceness, false), calmest: best(tod, p => p.niceness, true),
+    kindestProj: best(proj, p => p.niceness, true), harshestProj: best(proj, p => p.niceness, false),
+    nicest: niceM ? cleanExhibit(sanitize(niceM.text), 58) : null,
+    spicy: meanM ? cleanExhibit(sanitize(meanM.text), 58) : null,
+  };
+}
+// A vector robot head (no emoji font needed) whose expression tracks the tier.
+function robotHead(x, y, s, accent, face) {
+  const cx = x + s / 2, sw = Math.max(3, s * 0.035);
+  const p = [`<rect x="${x}" y="${y}" width="${s}" height="${s}" rx="${s * 0.18}" fill="#0b0f14" stroke="${accent}" stroke-width="${sw}"/>`];
+  p.push(`<line x1="${cx}" y1="${y}" x2="${cx}" y2="${y - s * 0.16}" stroke="${accent}" stroke-width="${sw}"/><circle cx="${cx}" cy="${y - s * 0.19}" r="${s * 0.05}" fill="${accent}"/>`);
+  const eyeY = y + s * 0.42, ex1 = x + s * 0.3, ex2 = x + s * 0.7;
+  if (face === 'mean') {
+    const d = s * 0.085;
+    for (const ex of [ex1, ex2]) p.push(`<line x1="${ex - d}" y1="${eyeY - d}" x2="${ex + d}" y2="${eyeY + d}" stroke="${accent}" stroke-width="${s * 0.045}" stroke-linecap="round"/><line x1="${ex - d}" y1="${eyeY + d}" x2="${ex + d}" y2="${eyeY - d}" stroke="${accent}" stroke-width="${s * 0.045}" stroke-linecap="round"/>`);
+  } else {
+    p.push(`<circle cx="${ex1}" cy="${eyeY}" r="${s * 0.09}" fill="${accent}"/><circle cx="${ex2}" cy="${eyeY}" r="${s * 0.09}" fill="${accent}"/>`);
+  }
+  const my = y + s * 0.72, mw = s * 0.42;
+  if (face === 'happy') p.push(`<path d="M ${cx - mw / 2} ${my} Q ${cx} ${my + s * 0.16} ${cx + mw / 2} ${my}" stroke="${accent}" stroke-width="${s * 0.045}" fill="none" stroke-linecap="round"/>`);
+  else if (face === 'mean') p.push(`<path d="M ${cx - mw / 2} ${my + s * 0.07} Q ${cx} ${my - s * 0.09} ${cx + mw / 2} ${my + s * 0.07}" stroke="${accent}" stroke-width="${s * 0.045}" fill="none" stroke-linecap="round"/>`);
+  else p.push(`<line x1="${cx - mw / 2}" y1="${my}" x2="${cx + mw / 2}" y2="${my}" stroke="${accent}" stroke-width="${s * 0.045}" stroke-linecap="round"/>`);
+  return p.join('');
+}
+function wrappedSvg(persona, stats, span, baseline, d) {
+  const W = 1080, H = 1920;
+  const accent = SVG_TIER[tierCode(SCALE.indexOf(persona), SCALE.length)];
+  const E = xmlEsc;
+  const t = (x, y, s, fill, txt, extra = '') => `<text x="${x}" y="${y}" font-size="${s}" fill="${fill}" ${extra}>${E(txt)}</text>`;
+  const card = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="28" fill="#0f151c" stroke="#1c2530" stroke-width="1.5"/>`;
+  const L = [];
+  L.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="'Helvetica Neue', Arial, sans-serif">`);
+  L.push(`<defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#05070a"/><stop offset="1" stop-color="${accent}" stop-opacity="0.18"/></linearGradient>
+<radialGradient id="glow" cx="0.5" cy="0.22" r="0.5"><stop offset="0" stop-color="${accent}" stop-opacity="0.33"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient></defs>`);
+  L.push(`<rect width="${W}" height="${H}" fill="url(#bg)"/><rect width="${W}" height="${H}" fill="url(#glow)"/>`);
+
+  // brand
+  L.push(robotHead(80, 80, 40, '#e6edf3', 'neutral'));
+  L.push(t(136, 112, 38, '#e6edf3', 'good-bot', 'font-weight="700"'));
+  L.push(t(W - 80, 112, 38, accent, 'WRAPPED', 'text-anchor="end" font-weight="800" letter-spacing="6"'));
+  if (span) L.push(t(80, 170, 28, '#8b949e', span));
+
+  // hero
+  L.push(card(60, 210, W - 120, 430));
+  L.push(robotHead(110, 300, 160, accent, persona.face));
+  L.push(t(330, 320, 30, '#8b949e', 'YOU TREAT YOUR AI LIKE…', 'letter-spacing="3"'));
+  L.push(t(330, 410, 78, accent, persona.name, 'font-weight="800"'));
+  L.push(t(330, 462, 34, '#c9d1d9', `“${persona.tag}”`, 'font-style="italic"'));
+  const frac = clamp(baseline, 0, 100) / 100;
+  L.push(`<rect x="330" y="520" width="640" height="22" rx="11" fill="#1c2530"/><rect x="330" y="520" width="${Math.round(640 * frac)}" height="22" rx="11" fill="${accent}"/>`);
+  L.push(t(330, 590, 26, '#8b949e', `niceness ${Math.round(baseline)} / 100`));
+
+  // stat grid
+  L.push(card(60, 670, W - 120, 200));
+  const cells = [['messages', fmtCount(stats.messages)], ['pleases', fmtCount(stats.pleases)], ['thank-yous', fmtCount(stats.thanks)], ['f-bombs', fmtCount(stats.fbombs)]];
+  cells.forEach(([lab, val], i) => {
+    const cx = 80 + i * 235 + 117;
+    L.push(t(cx, 775, 66, accent, val, 'text-anchor="middle" font-weight="800"'));
+    L.push(t(cx, 818, 26, '#8b949e', lab, 'text-anchor="middle"'));
+  });
+
+  // tone chart
+  L.push(card(60, 900, W - 120, 360));
+  L.push(t(100, 962, 32, '#e6edf3', 'YOUR TONE, OVER TIME', 'letter-spacing="2" font-weight="700"'));
+  const ps = d.periods;
+  if (ps.length >= 2) {
+    const vals = ps.map(p => p.niceness), lo = Math.min(...vals), hi = Math.max(...vals), span2 = (hi - lo) || 1;
+    const x0 = 110, x1 = 970, top = 1010, bot = 1200, bw = (x1 - x0) / ps.length;
+    ps.forEach((p, i) => {
+      const h = Math.max(10, ((p.niceness - lo) / span2) * (bot - top));
+      const col = SVG_TIER[tierCode(SCALE.indexOf(p.persona), SCALE.length)];
+      L.push(`<rect x="${(x0 + i * bw + 5).toFixed(1)}" y="${(bot - h).toFixed(1)}" width="${(bw - 10).toFixed(1)}" height="${h.toFixed(1)}" rx="6" fill="${col}"/>`);
+    });
+    L.push(t(110, 1235, 24, '#8b949e', ps[0].label));
+    L.push(t(970, 1235, 24, '#8b949e', ps[ps.length - 1].label, 'text-anchor="end"'));
+  }
+
+  // highlights
+  L.push(card(60, 1290, W - 120, 330));
+  L.push(t(100, 1352, 32, '#e6edf3', 'HIGHLIGHTS', 'letter-spacing="2" font-weight="700"'));
+  const hi2 = [];
+  if (d.warmest) hi2.push(`Warmest stretch — ${d.warmest.label}`);
+  if (d.coolest) hi2.push(`Coolest stretch — ${d.coolest.label}`);
+  if (d.spiciest) hi2.push(`Spiciest time of day — ${d.spiciest.label}`);
+  if (d.kindestProj) hi2.push(`Kindest to — ${d.kindestProj.label}`);
+  hi2.slice(0, 4).forEach((tx, i) => {
+    const y = 1402 + i * 52;
+    L.push(`<circle cx="118" cy="${y - 9}" r="7" fill="${accent}"/>`);
+    L.push(t(150, y, 30, '#c9d1d9', tx));
+  });
+
+  // moments
+  L.push(card(60, 1650, W - 120, 180));
+  if (d.nicest) { L.push(t(100, 1702, 24, accent, 'NICEST THING YOU SAID', 'letter-spacing="2"')); L.push(t(100, 1740, 27, '#c9d1d9', `“${d.nicest}”`, 'font-style="italic"')); }
+  if (d.spicy) { L.push(t(100, 1782, 24, '#f85149', 'SPICIEST', 'letter-spacing="2"')); L.push(t(100, 1818, 27, '#c9d1d9', `“${d.spicy}”`, 'font-style="italic"')); }
+
+  // footer
+  L.push(t(W / 2, 1885, 28, accent, `github.com/${REPO}  ·  #BeNiceToYourAI`, 'text-anchor="middle" font-weight="700"'));
+  L.push('</svg>');
+  return L.join('\n');
 }
 
 // ---- opt-in AI roast -----------------------------------------------------
@@ -804,6 +921,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot                     your card, 100% local (default)
   good-bot --ai                opt-in: redacted sample → your local 'claude'
   good-bot --timeline          niceness trend by month + time of day
+  good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
@@ -829,6 +947,7 @@ function main() {
   const wantTimeline = argv.includes('--timeline');
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
+  const wantWrapped = argv.includes('--wrapped');
   const noCopy = argv.includes('--no-copy');
   const random = argv.includes('--random');
   const importPath = argv.includes('--import') ? argVal('--import') : null;
@@ -906,6 +1025,15 @@ function main() {
   }
   if (wantBadge) process.stdout.write('\n' + badgeMarkdown(card.persona) + '\n');
 
+  if (wantWrapped) {
+    const svg = wrappedSvg(card.persona, stats, span, analysis.niceness, computeWrapped(analysis));
+    const svgPath = path.join(process.cwd(), 'good-bot-wrapped.svg');
+    fs.writeFileSync(svgPath, svg);
+    const pngPath = path.join(process.cwd(), 'good-bot-wrapped.png');
+    const tool = tryRasterize(svgPath, pngPath, 1080);
+    process.stderr.write(`✨ wrote your Wrapped poster → ${tool ? pngPath : svgPath}${tool ? ` (via ${tool})` : ' (install rsvg-convert/cairosvg for PNG)'}\n`);
+  }
+
   const plain = text.replace(/\[[0-9;]*m/g, '');
   if (!noCopy) copyClipboard(plain);
   try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
@@ -919,5 +1047,5 @@ if (require.main === module) main();
 module.exports = {
   sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
   scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
-  badgeMarkdown, SCALES, SCALE, SCALE_NAME,
+  badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME,
 };

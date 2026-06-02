@@ -4,7 +4,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
-  scaleIndex, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, SCALES,
+  scaleIndex, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline,
+  computeWrapped, wrappedSvg, personaFor, SCALES,
 } = require('../niceness.js');
 const PERSONAS = SCALES.people;
 const SPICE = SCALES.spice;
@@ -174,6 +175,21 @@ test('importExport parses a Claude data-export shape (human turns only)', () => 
   require('node:fs').unlinkSync(tmp);
   assert.equal(items.length, 2);
   assert.equal(items[0].text, 'please refactor this');
+});
+
+// ---- wrapped poster -----------------------------------------------------
+test('wrappedSvg renders a valid SVG poster from analysis', () => {
+  const items = [];
+  for (let i = 0; i < 60; i++) {
+    items.push({ text: i % 3 === 0 ? 'thanks, this is perfect!' : 'fix the bug', ts: `2026-0${1 + (i % 6)}-15T0${i % 9}:00:00Z`, project: i % 2 ? '/Users/x/repo-a' : '/Users/x/repo-b' });
+  }
+  const a = analyze(items);
+  const d = computeWrapped(a);
+  assert.ok(Array.isArray(d.periods));
+  const svg = wrappedSvg(personaFor(a.sig), a.stats, 'Jan 2026 → Jun 2026', a.niceness, d);
+  assert.ok(svg.startsWith('<svg'));
+  assert.ok(svg.includes('WRAPPED'));
+  assert.ok(svg.trim().endsWith('</svg>'));
 });
 
 // ---- trends -------------------------------------------------------------
