@@ -298,40 +298,60 @@ function groupBy(scored, keyFn) {
   }
   return m;
 }
+const EIGHTHS = '▏▎▍▌▋▊▉█';
+function fmtCount(n) {
+  if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k';
+  return String(n);
+}
+// A fixed-width meter, colored by the niceness tier, with eighth-block
+// precision so small differences (52 vs 55) are actually visible.
+function meter(niceness, width = 22) {
+  const f = clamp(niceness, 0, 100) / 100 * width;
+  const full = Math.floor(f);
+  const rem = f - full;
+  const partial = (full < width && rem > 0.06) ? EIGHTHS[clamp(Math.floor(rem * 8), 0, 7)] : '';
+  const empty = Math.max(0, width - full - (partial ? 1 : 0));
+  const p = personaForNiceness(niceness);
+  const code = tierCode(SCALE.indexOf(p), SCALE.length);
+  return color('█'.repeat(full) + partial, code) + color('░'.repeat(empty), '90');
+}
+function trendRow(label, niceness, n) {
+  const p = personaForNiceness(niceness);
+  const lab = color(label.padEnd(10), '97');
+  const val = color(String(Math.round(niceness)).padStart(3), '1');
+  const who = color(p.emoji + ' ' + p.name, '90');
+  const cnt = n != null ? color(`  (${fmtCount(n)})`, '90') : '';
+  return `      ${lab} ${meter(niceness)} ${val}  ${who}${cnt}`;
+}
 function renderTrends(scored) {
-  const out = [];
-  const months = [...groupBy(scored, s => (s.ts ? s.ts.slice(0, 7) : null)).entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  out.push('');
+  const out = [''];
   out.push(color('   📈 Niceness over time', '1;97'));
+  const months = [...groupBy(scored, s => (s.ts ? s.ts.slice(0, 7) : null)).entries()]
+    .filter(([, e]) => e.n >= 5).sort((a, b) => (a[0] < b[0] ? -1 : 1));
   if (months.length >= 2) {
-    const vals = months.map(([, e]) => bucketNiceness(e));
-    out.push('   ' + color(sparkline(vals), '92') + '   ' + color(`${months[0][0]} → ${months[months.length - 1][0]}`, '90'));
-    const best = months.reduce((a, b) => (bucketNiceness(b[1]) > bucketNiceness(a[1]) ? b : a));
-    const worst = months.reduce((a, b) => (bucketNiceness(b[1]) < bucketNiceness(a[1]) ? b : a));
-    out.push(color(`   nicest ${best[0]} (${personaForNiceness(bucketNiceness(best[1])).name}) · ` +
-      `meanest ${worst[0]} (${personaForNiceness(bucketNiceness(worst[1])).name})`, '90'));
-  } else {
-    out.push(color('   (need at least two months of history for a trend)', '90'));
-  }
-  // time of day
-  const byHour = groupBy(scored, s => (s.ts ? new Date(s.ts).getHours() : null));
-  if (byHour.size >= 3) {
-    const vals = [];
-    for (let h = 0; h < 24; h++) vals.push(byHour.has(h) ? bucketNiceness(byHour.get(h)) : null);
-    const present = vals.filter(v => v != null);
-    const mn = Math.min(...present), mx = Math.max(...present), span = (mx - mn) || 1;
-    const spark = vals.map(v => (v == null ? ' ' : SPARK[clamp(Math.floor(((v - mn) / span) * 8), 0, 7)])).join('');
-    out.push('');
-    out.push(color('   🕑 Niceness by hour (00 → 23)', '1;97'));
-    out.push('   ' + color(spark, '96'));
-    let best = null, worst = null;
-    for (let h = 0; h < 24; h++) {
-      if (vals[h] == null) continue;
-      if (best == null || vals[h] > vals[best]) best = h;
-      if (worst == null || vals[h] < vals[worst]) worst = h;
+    for (const [k, e] of months) {
+      const [y, m] = k.split('-');
+      out.push(trendRow(`${MONTHS[+m - 1]} ${y}`, bucketNiceness(e), e.n));
     }
-    const hh = h => String(h).padStart(2, '0') + ':00';
-    out.push(color(`   sweetest around ${hh(best)} · spiciest around ${hh(worst)}`, '90'));
+  } else {
+    out.push(color('      (need at least two months of history for a trend)', '90'));
+  }
+
+  const BINS = [['night', 0, 6], ['morning', 6, 12], ['afternoon', 12, 18], ['evening', 18, 24]];
+  const byHour = groupBy(scored, s => (s.ts ? new Date(s.ts).getHours() : null));
+  const rows = [];
+  for (const [name, lo, hi] of BINS) {
+    let n = 0, nice = 0, mean = 0;
+    for (let h = lo; h < hi; h++) {
+      const e = byHour.get(h);
+      if (e) { n += e.n; nice += e.nice; mean += e.mean; }
+    }
+    if (n >= 5) rows.push(trendRow(name, bucketNiceness({ n, nice, mean }), n));
+  }
+  if (rows.length >= 2) {
+    out.push('');
+    out.push(color('   🕑 Niceness by time of day', '1;97'));
+    out.push(...rows);
   }
   return out.join('\n');
 }
