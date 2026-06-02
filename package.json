@@ -6,7 +6,8 @@
     "good-bot": "niceness.js"
   },
   "scripts": {
-    "test": "node --check niceness.js && node --check demo-data.js && node niceness.js --demo > /dev/null && node niceness.js --scale spice --demo > /dev/null && echo ok"
+    "test": "node --test",
+    "smoke": "node niceness.js --demo > /dev/null && node niceness.js --scale spice --demo > /dev/null && node niceness.js --help > /dev/null && echo ok"
   },
   "keywords": [
     "claude",

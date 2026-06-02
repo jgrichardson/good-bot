@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [16, 18, 20]
+        node: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,8 +18,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Syntax check
         run: node --check niceness.js && node --check demo-data.js
+      - name: Unit tests
+        run: npm test
       - name: Demo smoke test (people + spice)
-        run: |
-          node niceness.js --demo > /dev/null
-          node niceness.js --scale spice --demo > /dev/null
-          node niceness.js --help > /dev/null
+        run: npm run smoke

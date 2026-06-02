@@ -67,6 +67,8 @@ Your transcripts contain real work — customer names, secrets, file paths. So:
 
 Regex redaction can't catch *semantic* PII (a client or fund name in prose), which is exactly why the safe default never transmits anything. Glance at your card before posting it publicly.
 
+Full details: [PRIVACY.md](PRIVACY.md). It's one short, dependency-free file — read [`niceness.js`](niceness.js) and verify for yourself.
+
 ---
 
 ## 🎭 The ladder (people scale)

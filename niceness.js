@@ -8,7 +8,7 @@
 // Rogers) down to a tyrant (Darth Vader).
 //
 // Usage:
-//   npx github:jgrichardson/REPO_NAME      # zero-install (default: 100% local)
+//   npx github:jgrichardson/good-bot       # zero-install (default: 100% local)
 //   node niceness.js                       # if you cloned the repo
 //   node niceness.js --ai                  # opt-in: send a REDACTED sample to your local `claude`
 //   node niceness.js --demo                # preview every rank on the ladder
@@ -199,6 +199,28 @@ function walk(dir) {
   return out;
 }
 
+// Pure + testable: given one parsed transcript entry, return the human-typed
+// text it contains (after dropping tool results, system reminders, command
+// wrappers, interrupts, and this tool's own output). Returns [] for anything
+// that isn't the human actually talking.
+function extractTexts(obj) {
+  if (!obj || obj.type !== 'user' || obj.isMeta) return [];
+  const content = obj.message && obj.message.content;
+  let chunks = [];
+  if (typeof content === 'string') chunks = [content];
+  else if (Array.isArray(content)) chunks = content.filter(b => b && b.type === 'text').map(b => String(b.text || ''));
+  const out = [];
+  for (const raw of chunks) {
+    const text = raw.replace(SR_BLOCK, '').trim();
+    if (!text) continue;
+    if (TAG_NOISE.test(text)) continue;
+    if (SELF_NOISE.test(text)) continue;
+    if (text.startsWith('[Request interrupted') || text.startsWith('Caveat:')) continue;
+    out.push(text);
+  }
+  return out;
+}
+
 function humanMessages() {
   const msgs = [];
   let first = null, last = null;
@@ -210,21 +232,11 @@ function humanMessages() {
       if (!line) continue;
       let obj;
       try { obj = JSON.parse(line); } catch (_) { continue; }
-      if (!obj || obj.type !== 'user' || obj.isMeta) continue;
-      const content = obj.message && obj.message.content;
-      let chunks = [];
-      if (typeof content === 'string') chunks = [content];
-      else if (Array.isArray(content)) chunks = content.filter(b => b && b.type === 'text').map(b => String(b.text || ''));
-      for (const raw of chunks) {
-        const text = raw.replace(SR_BLOCK, '').trim();
-        if (!text) continue;
-        if (TAG_NOISE.test(text)) continue;
-        if (SELF_NOISE.test(text)) continue;
-        if (text.startsWith('[Request interrupted') || text.startsWith('Caveat:')) continue;
-        msgs.push(text);
-        const ts = obj.timestamp;
-        if (ts) { if (!first || ts < first) first = ts; if (!last || ts > last) last = ts; }
-      }
+      const texts = extractTexts(obj);
+      if (!texts.length) continue;
+      for (const t of texts) msgs.push(t);
+      const ts = obj.timestamp;
+      if (ts) { if (!first || ts < first) first = ts; if (!last || ts > last) last = ts; }
     }
   }
   return { msgs, fileCount: files.length, first, last };
@@ -555,6 +567,15 @@ function main() {
   copyClipboard(plain);
   try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
   process.stderr.write('\n(plain-text copied to your clipboard · saved to my-niceness-card.txt)\n');
+  if (!useAi) {
+    process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected. (--ai opts into a redacted local-LLM roast.)\n');
+  }
 }
 
-main();
+if (require.main === module) main();
+
+// Exported for tests; the file still runs as a CLI when invoked directly.
+module.exports = {
+  sanitize, extractTexts, scoreMessage, shouty, analyze, scaleIndex,
+  personaFor, parseLabeled, matchPersona, PERSONAS, SPICE, SCALES,
+};
