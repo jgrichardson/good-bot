@@ -30,7 +30,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { FACES, SCALES, SCALE_META } = require('./scales.js');
 
-const SAMPLE_CHAR_BUDGET = 45000;
+const SAMPLE_CHAR_BUDGET = 80000;   // ~20k tokens: a deeper read for --ai, still one call
 const PER_MSG_TRUNCATE = 360;
 const MODEL = process.env.NICENESS_MODEL || 'sonnet';
 const REPO = process.env.NICENESS_REPO || 'jgrichardson/good-bot';
@@ -228,8 +228,8 @@ function spanOf(items) {
 // ---- scoring -------------------------------------------------------------
 const STRONG_NICE = ['please', 'thank', 'thanks', 'thx', 'appreciate', 'appreciated', 'apologies', 'sorry', 'kudos', 'cheers'];
 const SOFT_NICE = ['great job', 'nice work', 'good job', 'good work', 'well done', 'love it', "you're the best", 'good bot',
-  'no rush', 'no worries', 'no problem', 'if you could', "if you don't mind", 'would you mind',
-  'much appreciated', 'amazing', 'awesome', 'brilliant', 'fantastic', 'wonderful', 'perfect', 'beautiful'];
+  'no rush', 'no worries', 'no problem', 'if you could', "if you don't mind", 'would you mind', 'could you', 'can you',
+  'would you', 'when you get a chance', 'much appreciated', 'amazing', 'awesome', 'brilliant', 'fantastic', 'wonderful', 'perfect', 'beautiful'];
 const NICE_EMOJI = ['🙏', '❤️', '😊', '🎉', '💯', '🥳', '🙌'];
 const STRONG_MEAN = ['fuck', 'fucking', 'shit', 'bullshit', 'goddamn', 'dammit', 'stupid', 'idiot', 'moron', 'dumb', 'useless', 'pathetic', 'worthless', 'garbage'];
 const SOFT_MEAN = ['wtf', 'what the hell', 'are you kidding', 'come on', 'seriously', 'ugh', 'terrible', 'awful',
@@ -245,6 +245,13 @@ function countHits(low, terms) {
   }
   return n;
 }
+// A negator within ~2 words before a positive flips it: "no thanks", "not
+// great", "don't bother saying please". This is the cheap-but-real step up
+// from blind keyword counting.
+const NEGATORS = "no|not|never|don'?t|doesn'?t|did'?nt|didn'?t|isn'?t|wasn'?t|aren'?t|can'?t|won'?t|stop|hardly|barely|without";
+const NEG_RE = new RegExp(`\\b(?:${NEGATORS})\\b(?:\\s+\\w+){0,2}\\s+(?:${[...STRONG_NICE, ...SOFT_NICE].map(esc).join('|')})\\b`, 'g');
+function negatedPositives(low) { return (low.match(NEG_RE) || []).length; }
+
 function shouty(text) {
   const letters = text.replace(/[^a-zA-Z]/g, '');
   if (letters.length < 5) return false;
@@ -252,22 +259,29 @@ function shouty(text) {
 }
 function scoreMessage(text) {
   const low = text.toLowerCase();
+  const negated = negatedPositives(low);
   let nice = countHits(low, STRONG_NICE) * 2 + countHits(low, SOFT_NICE);
   for (const e of NICE_EMOJI) nice += text.split(e).length - 1;
-  let mean = countHits(low, STRONG_MEAN) * 3 + countHits(low, SOFT_MEAN);
+  nice = Math.max(0, nice - negated * 2);                 // a negated "thanks" isn't gratitude
+  let mean = countHits(low, STRONG_MEAN) * 3 + countHits(low, SOFT_MEAN) + negated;
   if (shouty(text)) mean += 1;
   mean += (text.match(/!{3,}|\?!/g) || []).length;
   return { nice, mean };
 }
 
 function analyze(items) {
-  let totalNice = 0, totalMean = 0, totalChars = 0;
+  let totalMean = 0, totalChars = 0, posMsgs = 0, negMsgs = 0;
   let thanks = 0, pleases = 0, fbombs = 0, shouts = 0, apologies = 0, exclaims = 0;
   const scored = items.map(it => {
     const text = typeof it === 'string' ? it : it.text;
     const ts = typeof it === 'string' ? null : it.ts;
     const s = scoreMessage(text);
-    totalNice += s.nice; totalMean += s.mean; totalChars += text.length;
+    totalMean += s.mean; totalChars += text.length;
+    // Classify each message once, so a single gushing message can't outweigh
+    // a hundred curt ones (and vice versa) — closer to real sentiment than
+    // summing every keyword.
+    if (s.nice > s.mean) posMsgs += 1;
+    else if (s.mean > s.nice) negMsgs += 1;
     const low = text.toLowerCase();
     pleases += (low.match(/\bplease\b/g) || []).length;
     thanks += (low.match(/\b(?:thank|thanks|thx|ty)\b/g) || []).length;
@@ -278,9 +292,12 @@ function analyze(items) {
     return { text, ts, nice: s.nice, mean: s.mean };
   });
   const n = Math.max(items.length, 1);
-  const niceness = clamp(50 + (totalNice / n) * 22 - (totalMean / n) * 40, 0, 100);
+  // Net share of warm vs. harsh messages, negatives weighted heavier (one
+  // cruel message colors a relationship more than one kind one).
+  const niceness = clamp(50 + ((posMsgs - 1.7 * negMsgs) / n) * 140, 0, 100);
   const sig = {
     n: items.length, niceness, avgLen: totalChars / n,
+    posRate: posMsgs / n, negRate: negMsgs / n,
     pleaseRate: pleases / n, thanksRate: thanks / n, apologyRate: apologies / n,
     capsRate: shouts / n, exclaimRate: exclaims / n, meanRate: totalMean / n, fbombRate: fbombs / n,
     hash: Math.round(pleases * 7 + thanks * 13 + items.length * 3 + totalMean * 17 + totalChars),
@@ -580,7 +597,11 @@ function ladderText() { return SCALE.map((p, i) => `${i + 1}. ${p.name} — ${p.
 function llmCard(analysis, sample, stats) {
   const prompt = `You are grading how kindly a software engineer treats their AI coding
 assistant, judging ONLY from the engineer's own typed messages below.
-Affectionate roast energy, never genuinely mean to the human.
+Read for genuine TONE and sentiment — warmth, patience, gratitude,
+frustration, contempt, courtesy under pressure — not the mere frequency of
+words like "thanks". A terse "do it" is neutral, not rude; "no, obviously
+not" is colder than its words; sarcasm counts. Affectionate roast energy,
+never genuinely mean to the human.
 
 Pick EXACTLY ONE persona from this ladder (1 = nicest, ${SCALE.length} = meanest):
 

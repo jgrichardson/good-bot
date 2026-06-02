@@ -72,6 +72,15 @@ test('scoreMessage detects niceness and meanness', () => {
   assert.ok(scoreMessage('this is stupid and useless garbage').mean > 0);
 });
 
+test('scoreMessage handles negation (not just keyword counting)', () => {
+  // a negated positive should NOT read as gratitude
+  assert.equal(scoreMessage('no thanks, that is wrong').nice, 0);
+  assert.equal(scoreMessage('not great, this is broken').nice, 0);
+  assert.ok(scoreMessage('no thanks, that is wrong').mean > 0);
+  // genuine gratitude still counts
+  assert.ok(scoreMessage('that is great, thank you!').nice > 0);
+});
+
 test('shouty flags all-caps yelling, not short words', () => {
   assert.equal(shouty('WHY IS THIS NOT WORKING'), true);
   assert.equal(shouty('ok'), false);
