@@ -1,0 +1,4 @@
+node_modules/
+my-niceness-card.txt
+*.log
+.DS_Store

@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [16, 18, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Syntax check
+        run: node --check niceness.js && node --check demo-data.js
+      - name: Demo smoke test (people + spice)
+        run: |
+          node niceness.js --demo > /dev/null
+          node niceness.js --scale spice --demo > /dev/null
+          node niceness.js --help > /dev/null

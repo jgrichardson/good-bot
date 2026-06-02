@@ -1,0 +1,38 @@
+{
+  "name": "good-bot",
+  "version": "0.1.0",
+  "description": "How nice are you to your AI? A shareable report card (Mr. Rogers → Darth Vader) graded from your local Claude Code history. 100% local by default.",
+  "bin": {
+    "good-bot": "niceness.js"
+  },
+  "scripts": {
+    "test": "node --check niceness.js && node --check demo-data.js && node niceness.js --demo > /dev/null && node niceness.js --scale spice --demo > /dev/null && echo ok"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "fun",
+    "report-card",
+    "cli"
+  ],
+  "author": "Greg Richardson (@jgrichardson)",
+  "license": "MIT",
+  "homepage": "https://github.com/jgrichardson/good-bot#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jgrichardson/good-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jgrichardson/good-bot/issues"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "niceness.js",
+    "demo-data.js",
+    "commands",
+    ".claude-plugin"
+  ]
+}

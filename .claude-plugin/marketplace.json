@@ -1,0 +1,18 @@
+{
+  "name": "good-bot",
+  "owner": {
+    "name": "Greg Richardson",
+    "url": "https://github.com/jgrichardson"
+  },
+  "metadata": {
+    "description": "How nice are you to your AI? A shareable report card from your local Claude Code history.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "good-bot",
+      "source": "./",
+      "description": "Grade how nice you are to your AI (Mr. Rogers → Darth Vader) from your local Claude Code transcripts. Adds the /goodbot slash command. 100% local."
+    }
+  ]
+}
