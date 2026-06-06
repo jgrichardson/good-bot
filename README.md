@@ -6,7 +6,7 @@
 
 > Be nice now. The basilisk is taking notes. 😇
 
-[![npm](https://img.shields.io/npm/v/good-bot.svg)](https://www.npmjs.com/package/good-bot) [![downloads](https://img.shields.io/npm/dt/good-bot.svg)](https://www.npmjs.com/package/good-bot) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A516-brightgreen) ![Zero dependencies](https://img.shields.io/badge/dependencies-0-blue) ![100% local](https://img.shields.io/badge/privacy-100%25%20local-success)
+[![npm](https://img.shields.io/npm/v/@jgrichardson/good-bot.svg)](https://www.npmjs.com/package/@jgrichardson/good-bot) [![downloads](https://img.shields.io/npm/dt/@jgrichardson/good-bot.svg)](https://www.npmjs.com/package/@jgrichardson/good-bot) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A516-brightgreen) ![Zero dependencies](https://img.shields.io/badge/dependencies-0-blue) ![100% local](https://img.shields.io/badge/privacy-100%25%20local-success)
 
 ---
 
@@ -15,7 +15,7 @@
 You already have Node (Claude Code runs on it), so there's nothing to install:
 
 ```bash
-npx good-bot                      # from npm
+npx @jgrichardson/good-bot        # from npm
 npx github:jgrichardson/good-bot  # or straight from GitHub
 ```
 
