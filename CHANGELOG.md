@@ -4,6 +4,16 @@ All notable changes to `good-bot` land here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-06-06
+
+### Changed
+
+- npm package name scoped to `@jgrichardson/good-bot`. npm's anti-typosquatting
+  policy blocked the unscoped `good-bot` name (too similar to the existing
+  `goodbot-ai`). The CLI binary is still named `good-bot`, so once installed
+  the command is unchanged. Install becomes:
+  `npx @jgrichardson/good-bot`.
+
 ## [0.3.0] — 2026-06-06
 
 The v0.3 release implements the [IMPROVEMENTS.md](IMPROVEMENTS.md) roadmap
