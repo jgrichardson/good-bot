@@ -15,6 +15,7 @@ import {
 } from './engine.js';
 import { renderPoster } from './poster.js';
 import { parseImport } from './import.js';
+import { submitScore, fetchStats, computePercentile } from './barometer.js';
 
 const state = {
   scale: 'people',
@@ -112,6 +113,36 @@ function renderResult() {
   $('#result-niceness').textContent = `${r.niceness}/100 on the ${r.scale} scale`;
   $('#result-blurb').textContent = r.persona.blurb || '';
   $('#nice-bar-fill').style.width = `${r.niceness}%`;
+}
+
+function setupBarometer() {
+  const btn = document.getElementById('barometer-submit');
+  const out = document.getElementById('barometer-result');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!state.result) return;
+    btn.disabled = true;
+    btn.textContent = '🌡️ Submitting…';
+    const r = state.result;
+    const submit = await submitScore({ niceness: r.niceness, scale: r.scale, source: r.source || 'quiz' });
+    if (!submit.ok) {
+      out.classList.remove('hidden');
+      out.classList.add('error');
+      out.innerHTML = 'Barometer offline — your score wasn\'t recorded. (No retry; nothing was stored.)';
+      btn.textContent = 'Try again later';
+      return;
+    }
+    const stats = await fetchStats(r.scale);
+    const pct = computePercentile(r.niceness, stats);
+    out.classList.remove('hidden');
+    out.classList.remove('error');
+    if (pct) {
+      out.innerHTML = `📊 You beat <strong>${pct.percentile}%</strong> of the <strong>${pct.total.toLocaleString()}</strong> people on the <code>${r.scale}</code> scale.`;
+    } else {
+      out.innerHTML = `✅ Recorded. Stats will populate as more people add their scores.`;
+    }
+    btn.textContent = '✅ Added';
+  });
 }
 
 function setupShare() {
@@ -238,4 +269,5 @@ populateScales();
 setupActions();
 setupShare();
 setupDropzone();
+setupBarometer();
 if (!preloadFromUrl()) show('landing');

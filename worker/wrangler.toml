@@ -1,0 +1,23 @@
+# Cloudflare Workers config for the good-bot barometer.
+#
+# Deploy:
+#   cd worker && npx wrangler deploy
+#
+# One-time setup before first deploy:
+#   1. Create a free Cloudflare account
+#   2. `npx wrangler login` (opens browser)
+#   3. `npx wrangler kv namespace create STATS`
+#   4. Copy the `id` it prints into the [kv_namespaces] block below
+#   5. `npx wrangler kv namespace create STATS --preview`
+#   6. Copy that `preview_id` into the same block
+
+name = "good-bot-barometer"
+main = "index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true   # initial route: good-bot-barometer.<account>.workers.dev
+
+# Replace IDs after the wrangler kv namespace create step
+[[kv_namespaces]]
+binding = "STATS"
+id = "REPLACE_WITH_KV_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_ID"

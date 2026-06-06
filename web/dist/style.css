@@ -211,3 +211,32 @@ footer a:hover { text-decoration: underline; }
 @media (min-width: 481px) and (max-width: 700px) {
   .share-row { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* Barometer (opt-in global stats) */
+.barometer {
+  background: #0f1722;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 16px;
+}
+.barometer h3 { margin: 0 0 4px; font-size: 17px; }
+.barometer .how { background: transparent; padding: 0; margin: 8px 0 12px; }
+.barometer button.primary.outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  font-weight: 700;
+  padding: 12px;
+}
+.barometer button.primary.outline:hover { background: rgba(92, 242, 192, 0.08); }
+#barometer-result {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #0b1118;
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  font-size: 16px;
+}
+#barometer-result.error { border-left-color: var(--danger); color: var(--muted); }
+#barometer-result code { font-family: var(--mono); font-size: 13px; color: var(--accent); }

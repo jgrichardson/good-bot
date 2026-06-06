@@ -104,6 +104,23 @@
         </div>
 
         <button class="primary" data-action="download-poster">📸 Download poster (for IG / TikTok)</button>
+
+        <div id="barometer" class="barometer">
+          <h3>🌡️ Global barometer (opt-in)</h3>
+          <p class="meta">See how you rank against everyone who's taken it.</p>
+          <details class="how">
+            <summary>What we send & store</summary>
+            <p class="meta">
+              <strong>Sent:</strong> just <code>{ niceness, scale, source }</code> — three numbers + strings.
+              <br /><strong>NOT sent:</strong> IP address, browser fingerprint, cookies, your transcripts, your name.
+              <br /><strong>Used for:</strong> the global histogram only.
+              <br /><strong>Never:</strong> sold, shared, or used as training data. See <a href="/privacy.html">PRIVACY</a> + <a href="https://github.com/jgrichardson/good-bot/blob/main/worker/index.js" target="_blank" rel="noopener">worker source</a>.
+            </p>
+          </details>
+          <button id="barometer-submit" class="primary outline">🌡️ Add my score to the barometer</button>
+          <div id="barometer-result" class="hidden"></div>
+        </div>
+
         <button class="link" data-action="restart">↺ Take it again</button>
       </section>
 
