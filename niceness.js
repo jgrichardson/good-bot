@@ -898,6 +898,60 @@ function copyClipboard(text) {
     : ['xclip', ['-selection', 'clipboard']];
   try { spawnSync(cmd[0], cmd[1], { input: text }); } catch (_) {}
 }
+
+// ---- social share composers ---------------------------------------------
+// Build a pre-filled compose URL for a social platform. Each builder takes
+// (text, url) and returns the platform's intent URL. Aliases (x→twitter,
+// bsky→bluesky) resolve to the canonical key.
+const SHARE_PLATFORMS = {
+  twitter: {
+    name: 'Twitter / X',
+    build: (text, url) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+  },
+  x: 'twitter',
+  bluesky: {
+    name: 'Bluesky',
+    build: (text, url) => `https://bsky.app/intent/compose?text=${encodeURIComponent(text + ' ' + url)}`,
+  },
+  bsky: 'bluesky',
+  linkedin: {
+    name: 'LinkedIn',
+    build: (text, url) => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}&summary=${encodeURIComponent(text)}`,
+  },
+  reddit: {
+    name: 'Reddit',
+    build: (text, url) => `https://www.reddit.com/submit?title=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+  },
+};
+
+const REPO_URL = 'https://github.com/jgrichardson/good-bot';
+
+function resolveSharePlatform(name) {
+  if (!name) return null;
+  const key = String(name).toLowerCase().trim();
+  const v = SHARE_PLATFORMS[key];
+  if (!v) return null;
+  return typeof v === 'string' ? SHARE_PLATFORMS[v] : v;
+}
+
+function shareText(persona, scaleName) {
+  const e = persona.emoji ? persona.emoji + ' ' : '';
+  const tag = persona.tag ? ` — ${persona.tag}` : '';
+  return `I'm ${e}${persona.name} on the AI niceness scale (${scaleName}).${tag} How nice are YOU to your AI? #BeNiceToYourAI`;
+}
+
+function buildShareUrl(platform, persona, scaleName) {
+  const p = resolveSharePlatform(platform);
+  if (!p) return null;
+  return { name: p.name, url: p.build(shareText(persona, scaleName), REPO_URL) };
+}
+
+function openUrl(url) {
+  const cmd = process.platform === 'darwin' ? ['open', [url]]
+    : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
+    : ['xdg-open', [url]];
+  try { spawnSync(cmd[0], cmd[1], { detached: true, stdio: 'ignore' }); } catch (_) {}
+}
 function emitSample(analysis, stats, span) {
   const lines = ['NICENESS_DATA v1 — feed this to the grader.'];
   lines.push(`STATS messages=${stats.messages} pleases=${stats.pleases} thanks=${stats.thanks} fbombs=${stats.fbombs} shouts=${stats.shouts} niceness=${Math.round(analysis.niceness)} span=${span}`);
@@ -924,6 +978,8 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
+  good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit (copies to clipboard)
+  good-bot --share-open        also open the share URL in your browser
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
   good-bot --random            roll a random rank (and random scale) — run again for another
   good-bot --source <name>     claude | codex | all   (default: all found locally)
@@ -952,6 +1008,8 @@ function main() {
   const random = argv.includes('--random');
   const importPath = argv.includes('--import') ? argVal('--import') : null;
   const source = argVal('--source');
+  const sharePlatform = argv.includes('--share') ? argVal('--share') : null;
+  const shareOpen = argv.includes('--share-open');
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
@@ -1035,9 +1093,24 @@ function main() {
   }
 
   const plain = text.replace(/\[[0-9;]*m/g, '');
-  if (!noCopy) copyClipboard(plain);
+
+  let shareInfo = null;
+  if (sharePlatform) {
+    shareInfo = buildShareUrl(sharePlatform, card.persona, SCALE_NAME);
+    if (!shareInfo) {
+      const known = Object.entries(SHARE_PLATFORMS).filter(([, v]) => typeof v !== 'string').map(([k]) => k).join(' | ');
+      process.stderr.write(`Unknown --share target "${sharePlatform}". Try: ${known}\n`);
+    } else {
+      process.stdout.write(`\n📣 Share to ${shareInfo.name}:\n${shareInfo.url}\n`);
+      if (shareOpen) { openUrl(shareInfo.url); process.stderr.write(`(opened in your browser)\n`); }
+    }
+  }
+
+  // --share: clipboard gets the URL (paste straight into Twitter/Bluesky/etc).
+  // No --share: clipboard gets the card (existing behavior).
+  if (!noCopy) copyClipboard(shareInfo ? shareInfo.url : plain);
   try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
-  process.stderr.write(`\n(plain-text ${noCopy ? '' : 'copied to your clipboard · '}saved to my-niceness-card.txt)\n`);
+  process.stderr.write(`\n(${shareInfo ? 'share URL' : 'plain-text card'} ${noCopy ? '' : 'copied to your clipboard · '}card saved to my-niceness-card.txt)\n`);
   if (random) process.stderr.write(`🎲 random pick on the ${SCALE_NAME} scale — run again for another.\n`);
   else if (!useAi) process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected. (--ai opts into a redacted local-LLM roast.)\n');
 }
@@ -1048,4 +1121,5 @@ module.exports = {
   sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
   scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
   badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME,
+  SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,
 };
