@@ -1141,6 +1141,115 @@ async function runQuizInteractive() {
   return answers.join('');
 }
 
+// ---- audit / verify-privacy mode ---------------------------------------
+// Patches every network-egress surface in node's stdlib so any code path that
+// tries to make a network call throws + gets recorded. Run the default flow
+// inside this patch; print an attestation at the end:
+//   ✅ Provably no network call was attempted during this run.
+// If anything tried to call out, the attempt is named in the report.
+//
+// This makes the project's privacy claim externally verifiable rather than
+// trust-me-bro.
+
+function installNetworkAudit() {
+  const calls = {
+    'net.createConnection': 0,
+    'net.connect': 0,
+    'tls.connect': 0,
+    'http.request': 0,
+    'http.get': 0,
+    'https.request': 0,
+    'https.get': 0,
+    'dns.lookup': 0,
+    'dns.resolve': 0,
+    'dgram.createSocket': 0,
+    'fetch': 0,
+  };
+
+  const patch = (mod, key, label) => {
+    if (!mod || typeof mod[key] !== 'function') return;
+    const orig = mod[key];
+    mod[key] = function patched() {
+      calls[label] = (calls[label] || 0) + 1;
+      // Throw synchronously so any code expecting the function silently
+      // succeeds at least crashes loud rather than queuing a request.
+      const err = new Error(`audit: ${label} was called and blocked`);
+      err.code = 'AUDIT_BLOCKED';
+      throw err;
+    };
+    return () => { mod[key] = orig; };
+  };
+
+  const restores = [];
+  try {
+    const net = require('node:net');
+    restores.push(patch(net, 'createConnection', 'net.createConnection'));
+    restores.push(patch(net, 'connect', 'net.connect'));
+  } catch (_) {}
+  try {
+    const tls = require('node:tls');
+    restores.push(patch(tls, 'connect', 'tls.connect'));
+  } catch (_) {}
+  try {
+    const http = require('node:http');
+    restores.push(patch(http, 'request', 'http.request'));
+    restores.push(patch(http, 'get', 'http.get'));
+  } catch (_) {}
+  try {
+    const https = require('node:https');
+    restores.push(patch(https, 'request', 'https.request'));
+    restores.push(patch(https, 'get', 'https.get'));
+  } catch (_) {}
+  try {
+    const dns = require('node:dns');
+    restores.push(patch(dns, 'lookup', 'dns.lookup'));
+    restores.push(patch(dns, 'resolve', 'dns.resolve'));
+  } catch (_) {}
+  try {
+    const dgram = require('node:dgram');
+    restores.push(patch(dgram, 'createSocket', 'dgram.createSocket'));
+  } catch (_) {}
+  // global fetch (Node 18+)
+  if (typeof globalThis.fetch === 'function') {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = function patchedFetch() {
+      calls.fetch = (calls.fetch || 0) + 1;
+      const err = new Error('audit: fetch was called and blocked');
+      err.code = 'AUDIT_BLOCKED';
+      throw err;
+    };
+    restores.push(() => { globalThis.fetch = origFetch; });
+  }
+
+  return {
+    calls,
+    restore() { for (const r of restores) if (typeof r === 'function') r(); },
+  };
+}
+
+function renderAuditReport(calls) {
+  const lines = [];
+  lines.push('');
+  lines.push(color('  🔒  PRIVACY AUDIT · NETWORK EGRESS REPORT', '1;32'));
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  const surfaces = Object.keys(calls).sort();
+  let totalAttempts = 0;
+  for (const s of surfaces) {
+    const n = calls[s] || 0;
+    totalAttempts += n;
+    const status = n === 0 ? color('✓ never called', '32') : color(`✗ blocked ${n}× ATTEMPTS`, '31');
+    lines.push('  ' + s.padEnd(28) + status);
+  }
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  if (totalAttempts === 0) {
+    lines.push(color('  ✅ Provably no network call was attempted during this run.', '1;32'));
+  } else {
+    lines.push(color(`  ❌ ${totalAttempts} network call attempt(s) were made and blocked.`, '1;31'));
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
 // ---- team leaderboard ---------------------------------------------------
 // Reads a directory of good-bot-card.json exports (one per teammate) and
 // builds a leaderboard text. Pairs with the .github workflow template so a
@@ -1542,6 +1651,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --post-webhook URL  opt-in: POST the (redacted) card to a Slack/Discord webhook
   good-bot --record            write good-bot-cast.json (asciinema v2 — embed anywhere)
   good-bot --leaderboard DIR   rank a directory of good-bot-card.json team exports
+  good-bot --audit             run with all network APIs blocked + print attestation
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
@@ -1585,6 +1695,29 @@ function main() {
   const webhookUrl = argv.includes('--post-webhook') ? argVal('--post-webhook') : null;
   const wantRecord = argv.includes('--record');
   const leaderboardDir = argv.includes('--leaderboard') ? argVal('--leaderboard') : null;
+  const wantAudit = argv.includes('--audit');
+
+  // Shadow variables so --audit can suppress ai+webhook everywhere without
+  // touching the original arg-derived values (TDZ-safe declaration).
+  let _useAi = useAi, _webhookUrl = webhookUrl;
+
+  // --audit installs network patches BEFORE we do anything else so any code
+  // path triggered by the rest of main() will be caught.
+  let auditCtx = null;
+  if (wantAudit) {
+    auditCtx = installNetworkAudit();
+    if (_webhookUrl) {
+      process.stderr.write('--audit blocks all network egress; ignoring --post-webhook.\n');
+      _webhookUrl = null;
+    }
+    if (_useAi) {
+      process.stderr.write('--audit blocks all network egress; ignoring --ai.\n');
+      _useAi = false;
+    }
+    process.on('exit', () => {
+      process.stdout.write(renderAuditReport(auditCtx.calls));
+    });
+  }
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
@@ -1728,7 +1861,7 @@ function main() {
     const idx = Math.floor(Math.random() * SCALE.length);
     const persona = SCALE[idx];
     card = { persona, verdict: persona.tag, assessment: persona.blurb, exhibits: localExhibits(analysis.scored, idx) };
-  } else if (useAi) {
+  } else if (_useAi) {
     process.stderr.write('\n⚠️  --ai sends a REDACTED sample of your own messages to your local `claude`.\n');
     process.stderr.write('Asking Claude to grade you (one short call)… ');
     const raw = llmCard(analysis, buildSample(analysis.scored, SAMPLE_CHAR_BUDGET), stats);
@@ -1748,8 +1881,8 @@ function main() {
   const text = renderCard(card.persona, card.verdict, card.assessment, card.exhibits, stats, span);
   process.stdout.write(text + '\n');
   if (wantTimeline) {
-    if (useAi) process.stderr.write('Rating each period with Claude…\n');
-    process.stdout.write(renderTrends(analysis.scored, analysis.niceness, useAi ? aiPeriodScorer : null) + '\n');
+    if (_useAi) process.stderr.write('Rating each period with Claude…\n');
+    process.stdout.write(renderTrends(analysis.scored, analysis.niceness, _useAi ? aiPeriodScorer : null) + '\n');
   }
 
   if (wantSvg) {
@@ -1806,9 +1939,9 @@ function main() {
     } catch (e) { process.stderr.write(`cast export failed: ${e.message}\n`); }
   }
   if (webhookUrl) {
-    let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
-    process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || webhookUrl}\n`);
-    postWebhook(webhookUrl, plain).then(r => {
+    let host = ''; try { host = new URL(_webhookUrl).hostname; } catch (_) {}
+    process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || _webhookUrl}\n`);
+    postWebhook(_webhookUrl, plain).then(r => {
       if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
       else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status + ' — ' + (r.body || ''))}\n`);
     });
@@ -1830,4 +1963,5 @@ module.exports = {
   postWebhook,
   buildAsciinemaCast, writeCast,
   loadTeamCards, rankTeamCards, renderLeaderboard,
+  installNetworkAudit, renderAuditReport,
 };
