@@ -1141,6 +1141,101 @@ async function runQuizInteractive() {
   return answers.join('');
 }
 
+// ---- streak + glow-up tracker ------------------------------------------
+// Persists a tiny history of past runs to ~/.good-bot/history.json so users
+// can watch their persona drift, build streaks, and brag about glow-ups.
+// File is local, JSON-encoded, capped at 365 entries (~30KB worst case).
+
+const HISTORY_PATH = path.join(os.homedir(), '.good-bot', 'history.json');
+const HISTORY_CAP = 365;
+
+function readHistory() {
+  try {
+    const raw = fs.readFileSync(HISTORY_PATH, 'utf8');
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.runs)) return { schemaVersion: 1, runs: [] };
+    return { schemaVersion: data.schemaVersion || 1, runs: data.runs };
+  } catch (_) {
+    return { schemaVersion: 1, runs: [] };
+  }
+}
+
+function writeHistory(hist) {
+  try {
+    fs.mkdirSync(path.dirname(HISTORY_PATH), { recursive: true });
+    const trimmed = hist.runs.slice(-HISTORY_CAP);
+    fs.writeFileSync(HISTORY_PATH, JSON.stringify({ schemaVersion: 1, runs: trimmed }, null, 0));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function recordRun(persona, scale, niceness) {
+  const hist = readHistory();
+  hist.runs.push({
+    ts: new Date().toISOString(),
+    scale,
+    persona: persona.name,
+    niceness: Math.round(niceness == null ? 50 : niceness),
+  });
+  writeHistory(hist);
+  return hist;
+}
+
+function forgetHistory() {
+  try { fs.unlinkSync(HISTORY_PATH); return true; } catch (_) { return false; }
+}
+
+function summarizeHistory(hist) {
+  const runs = (hist && hist.runs) || [];
+  if (!runs.length) return { empty: true };
+  const first = runs[0];
+  const last = runs[runs.length - 1];
+  // streak: consecutive trailing runs sharing the same persona
+  let streak = 1;
+  for (let i = runs.length - 2; i >= 0; i--) {
+    if (runs[i].persona === last.persona) streak++;
+    else break;
+  }
+  // all-time best (nicest niceness)
+  const best = runs.reduce((b, r) => (b == null || r.niceness > b.niceness) ? r : b, null);
+  // glow-up: niceness delta from first run to most recent
+  const glowUp = (last.niceness || 0) - (first.niceness || 0);
+  // recent timeline (last 14 runs, sparkline-friendly)
+  const recent = runs.slice(-14);
+  // unique personas in history (variety)
+  const personas = Array.from(new Set(runs.map(r => r.persona)));
+  return {
+    empty: false, totalRuns: runs.length, first, last, streak, best, glowUp, recent, personas,
+  };
+}
+
+function renderStreakReport(hist) {
+  const s = summarizeHistory(hist);
+  if (s.empty) return 'No history yet. Run good-bot a few times — your streak starts on the next run.\n';
+  const lines = [];
+  lines.push('');
+  lines.push(color('  📈  YOUR GOOD-BOT GLOW-UP', '1;36'));
+  lines.push(color('  ' + '─'.repeat(46), '90'));
+  const sinceStreak = s.streak === 1 ? 'just landed' : `${s.streak} runs in a row`;
+  lines.push(`  Current persona  · ${color(s.last.persona, '36')} (${sinceStreak})`);
+  lines.push(`  Niceness today   · ${s.last.niceness}/100`);
+  lines.push(`  All-time best    · ${s.best.persona} (${s.best.niceness}/100)`);
+  const arrow = s.glowUp > 0 ? '↑' : s.glowUp < 0 ? '↓' : '→';
+  const glowColor = s.glowUp > 0 ? '32' : s.glowUp < 0 ? '31' : '90';
+  lines.push(`  Glow-up so far   · ${color(arrow + ' ' + (s.glowUp > 0 ? '+' : '') + s.glowUp, glowColor)} since your first run (${s.first.persona}, ${s.first.niceness}/100)`);
+  lines.push(`  Distinct ranks   · ${s.personas.length} (${s.personas.slice(0, 4).join(', ')}${s.personas.length > 4 ? '…' : ''})`);
+  lines.push(`  Total runs       · ${s.totalRuns}`);
+  if (s.recent.length > 1) {
+    lines.push('');
+    const nums = s.recent.map(r => r.niceness);
+    lines.push(`  ${color('niceness  ', '90')}${sparkline(nums)}  ${color(`(last ${s.recent.length} runs)`, '90')}`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
 // ---- social share composers ---------------------------------------------
 // Build a pre-filled compose URL for a social platform. Each builder takes
 // (text, url) and returns the platform's intent URL. Aliases (x→twitter,
@@ -1227,6 +1322,9 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --random            roll a random rank (and random scale) — run again for another
   good-bot --quiz              7-question personality quiz (no transcripts required)
   good-bot --quiz-answers ABCD non-interactive quiz: pass the 7-letter answer string
+  good-bot --streak            show your glow-up: persona streak, all-time best, trend
+  good-bot --no-history        do not record this run to ~/.good-bot/history.json
+  good-bot --forget-history    delete ~/.good-bot/history.json and exit
   good-bot --source <name>     claude | codex | gemini | continue | aider | all   (default: all found locally)
   good-bot --import <file>     grade a Claude Desktop/web/Cowork "Export Data" conversations.json
   good-bot --demo              preview every rank on the current scale
@@ -1257,12 +1355,29 @@ function main() {
   const shareOpen = argv.includes('--share-open');
   const wantQuiz = argv.includes('--quiz') || argv.includes('--quiz-answers');
   const quizAnswers = argv.includes('--quiz-answers') ? argVal('--quiz-answers') : null;
+  const wantStreak = argv.includes('--streak');
+  const noHistory = argv.includes('--no-history');
+  const wantForget = argv.includes('--forget-history');
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
   if (random && !explicitScale) {
     const keys = Object.keys(SCALES);
     useScale(keys[Math.floor(Math.random() * keys.length)]);
+  }
+
+  // --forget-history short-circuits everything.
+  if (wantForget) {
+    const ok = forgetHistory();
+    process.stderr.write(ok ? 'history deleted.\n' : 'no history file to delete.\n');
+    return;
+  }
+
+  // --streak shows the report; doesn't require running a full analysis.
+  if (wantStreak) {
+    process.stdout.write(renderStreakReport(readHistory()));
+    process.stderr.write('🔒 100% local — history lives at ~/.good-bot/history.json.\n');
+    return;
   }
 
   // Quiz path short-circuits the transcript walk entirely.
@@ -1291,6 +1406,7 @@ function main() {
       try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
       process.stderr.write(`\n(${shareInfo ? 'share URL' : 'plain-text card'} ${noCopy ? '' : 'copied to your clipboard · '}card saved to my-niceness-card.txt)\n`);
       process.stderr.write('🔒 100% local — quiz scored on your machine, nothing was sent anywhere.\n');
+      if (!noHistory) recordRun(persona, SCALE_NAME, scored.niceness);
     })().catch(e => { process.stderr.write(`quiz failed: ${e.message}\n`); process.exit(1); });
     return;
   }
@@ -1396,6 +1512,7 @@ function main() {
   process.stderr.write(`\n(${shareInfo ? 'share URL' : 'plain-text card'} ${noCopy ? '' : 'copied to your clipboard · '}card saved to my-niceness-card.txt)\n`);
   if (random) process.stderr.write(`🎲 random pick on the ${SCALE_NAME} scale — run again for another.\n`);
   else if (!useAi) process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected. (--ai opts into a redacted local-LLM roast.)\n');
+  if (!noHistory) recordRun(card.persona, SCALE_NAME, analysis.niceness);
 }
 
 if (require.main === module) main();
@@ -1407,4 +1524,6 @@ module.exports = {
   badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME, SOURCES,
   SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,
   QUIZ_QUESTIONS, scoreQuizAnswers, personaFromQuizFrac,
+  HISTORY_PATH, readHistory, writeHistory, recordRun, forgetHistory,
+  summarizeHistory, renderStreakReport,
 };
