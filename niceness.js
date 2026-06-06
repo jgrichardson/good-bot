@@ -1141,6 +1141,84 @@ async function runQuizInteractive() {
   return answers.join('');
 }
 
+// ---- export + compare --------------------------------------------------
+// --export json writes a self-contained card record so two runs can be
+// compared head-to-head later. --compare a.json b.json reads two such files
+// and prints a "who's nicer" verdict.
+
+function buildExportRecord(card, niceness, scale, span, stats, displayName) {
+  return {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    displayName: displayName || null,
+    scale,
+    persona: {
+      name: card.persona.name,
+      emoji: card.persona.emoji || null,
+      face: card.persona.face || null,
+      tag: card.persona.tag || null,
+    },
+    niceness: Math.round(niceness == null ? 50 : niceness),
+    stats: {
+      messages: stats.messages | 0,
+      pleases: stats.pleases | 0,
+      thanks: stats.thanks | 0,
+      fbombs: stats.fbombs | 0,
+      shouts: stats.shouts | 0,
+    },
+    span: span || null,
+  };
+}
+
+function readCardJson(file) {
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!raw || !raw.persona || typeof raw.persona.name !== 'string') {
+    throw new Error(`not a good-bot card: ${file}`);
+  }
+  if (typeof raw.niceness !== 'number') throw new Error(`missing niceness in ${file}`);
+  return raw;
+}
+
+function renderCompare(a, b) {
+  // a and b are card-export records. Decide a winner by niceness (ties go to
+  // whoever has more pleases/thanks).
+  const aNice = a.niceness, bNice = b.niceness;
+  const aWins = aNice > bNice || (aNice === bNice && (a.stats.pleases + a.stats.thanks) > (b.stats.pleases + b.stats.thanks));
+  const bWins = bNice > aNice || (aNice === bNice && (b.stats.pleases + b.stats.thanks) > (a.stats.pleases + a.stats.thanks));
+  const tie = !aWins && !bWins;
+  const nameA = a.displayName || a.persona.name;
+  const nameB = b.displayName || b.persona.name;
+  const lines = [];
+  lines.push('');
+  lines.push(color('  🥊  HEAD-TO-HEAD · WHO\'S NICER TO THEIR AI?', '1;35'));
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  const pad = (s, w) => { s = String(s); return s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length); };
+  const W = 24;
+  lines.push('  ' + color(pad('', 12), '90') + pad(nameA, W) + pad(nameB, W));
+  const row = (label, va, vb) => {
+    const aLabel = `${aWins && label === 'niceness' ? '👑 ' : ''}${va}`;
+    const bLabel = `${bWins && label === 'niceness' ? '👑 ' : ''}${vb}`;
+    lines.push('  ' + color(pad(label, 12), '90') + pad(aLabel, W) + pad(bLabel, W));
+  };
+  row('persona', `${a.persona.emoji || ''} ${a.persona.name}`.trim(), `${b.persona.emoji || ''} ${b.persona.name}`.trim());
+  row('niceness', `${aNice}/100`, `${bNice}/100`);
+  row('messages', String(a.stats.messages), String(b.stats.messages));
+  row('pleases', String(a.stats.pleases), String(b.stats.pleases));
+  row('thank-yous', String(a.stats.thanks), String(b.stats.thanks));
+  row('f-bombs', String(a.stats.fbombs), String(b.stats.fbombs));
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  if (tie) {
+    lines.push(color(`  🤝 TIE — both clock in at ${aNice}/100. Coexist gracefully.`, '36'));
+  } else {
+    const winner = aWins ? nameA : nameB;
+    const loser = aWins ? nameB : nameA;
+    const margin = Math.abs(aNice - bNice);
+    lines.push(color(`  🥇 WINNER: ${winner}  (by ${margin}/100 over ${loser})`, '1;32'));
+  }
+  lines.push('');
+  return { text: lines.join('\n'), aWins, bWins, tie, winnerName: tie ? null : (aWins ? nameA : nameB) };
+}
+
 // ---- streak + glow-up tracker ------------------------------------------
 // Persists a tiny history of past runs to ~/.good-bot/history.json so users
 // can watch their persona drift, build streaks, and brag about glow-ups.
@@ -1322,6 +1400,9 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --random            roll a random rank (and random scale) — run again for another
   good-bot --quiz              7-question personality quiz (no transcripts required)
   good-bot --quiz-answers ABCD non-interactive quiz: pass the 7-letter answer string
+  good-bot --export json       write good-bot-card.json (for --compare later)
+  good-bot --compare a.json b.json  head-to-head: whose AI relationship wins?
+  good-bot --me <name>         label the card (for export + compare display)
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
@@ -1358,6 +1439,10 @@ function main() {
   const wantStreak = argv.includes('--streak');
   const noHistory = argv.includes('--no-history');
   const wantForget = argv.includes('--forget-history');
+  const wantExportJson = argv.includes('--export') && argVal('--export') === 'json';
+  const compareIdx = argv.indexOf('--compare');
+  const compareFiles = compareIdx >= 0 ? argv.slice(compareIdx + 1, compareIdx + 3) : null;
+  const myName = argv.includes('--me') ? argVal('--me') : null;
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
@@ -1377,6 +1462,18 @@ function main() {
   if (wantStreak) {
     process.stdout.write(renderStreakReport(readHistory()));
     process.stderr.write('🔒 100% local — history lives at ~/.good-bot/history.json.\n');
+    return;
+  }
+
+  // --compare a.json b.json head-to-head
+  if (compareFiles && compareFiles.length === 2 && compareFiles[0] && compareFiles[1]) {
+    let a, b;
+    try { a = readCardJson(compareFiles[0]); } catch (e) { process.stderr.write(`failed to read ${compareFiles[0]}: ${e.message}\n`); process.exit(1); }
+    try { b = readCardJson(compareFiles[1]); } catch (e) { process.stderr.write(`failed to read ${compareFiles[1]}: ${e.message}\n`); process.exit(1); }
+    const r = renderCompare(a, b);
+    process.stdout.write(r.text + '\n');
+    if (!noCopy) copyClipboard(r.text.replace(/\x1b\[[0-9;]*m/g, ''));
+    process.stderr.write('🔒 100% local — both files read on this machine, nothing was sent anywhere.\n');
     return;
   }
 
@@ -1406,6 +1503,11 @@ function main() {
       try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
       process.stderr.write(`\n(${shareInfo ? 'share URL' : 'plain-text card'} ${noCopy ? '' : 'copied to your clipboard · '}card saved to my-niceness-card.txt)\n`);
       process.stderr.write('🔒 100% local — quiz scored on your machine, nothing was sent anywhere.\n');
+      if (wantExportJson) {
+        const rec = buildExportRecord({ persona }, scored.niceness, SCALE_NAME, span, stats, myName);
+        try { fs.writeFileSync(path.join(process.cwd(), 'good-bot-card.json'), JSON.stringify(rec, null, 2)); } catch (_) {}
+        process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
+      }
       if (!noHistory) recordRun(persona, SCALE_NAME, scored.niceness);
     })().catch(e => { process.stderr.write(`quiz failed: ${e.message}\n`); process.exit(1); });
     return;
@@ -1512,6 +1614,11 @@ function main() {
   process.stderr.write(`\n(${shareInfo ? 'share URL' : 'plain-text card'} ${noCopy ? '' : 'copied to your clipboard · '}card saved to my-niceness-card.txt)\n`);
   if (random) process.stderr.write(`🎲 random pick on the ${SCALE_NAME} scale — run again for another.\n`);
   else if (!useAi) process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected. (--ai opts into a redacted local-LLM roast.)\n');
+  if (wantExportJson) {
+    const rec = buildExportRecord(card, analysis.niceness, SCALE_NAME, span, stats, myName);
+    try { fs.writeFileSync(path.join(process.cwd(), 'good-bot-card.json'), JSON.stringify(rec, null, 2)); } catch (_) {}
+    process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
+  }
   if (!noHistory) recordRun(card.persona, SCALE_NAME, analysis.niceness);
 }
 
@@ -1526,4 +1633,5 @@ module.exports = {
   QUIZ_QUESTIONS, scoreQuizAnswers, personaFromQuizFrac,
   HISTORY_PATH, readHistory, writeHistory, recordRun, forgetHistory,
   summarizeHistory, renderStreakReport,
+  buildExportRecord, readCardJson, renderCompare,
 };
