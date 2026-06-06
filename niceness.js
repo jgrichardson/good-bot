@@ -1021,6 +1021,126 @@ function copyClipboard(text) {
   try { spawnSync(cmd[0], cmd[1], { input: text }); } catch (_) {}
 }
 
+// ---- personality quiz mode ----------------------------------------------
+// Lets people who have no AI transcripts (or whose transcripts are off-machine)
+// play. 7 multiple-choice questions, each answer mapped to a position on the
+// nicest→meanest axis (0 = nicest, 1 = meanest). We average the answers to a
+// fractional index in the active SCALE and pick the persona at that index.
+
+const QUIZ_QUESTIONS = [
+  {
+    q: "Your AI just gave you broken code. You…",
+    options: [
+      ['Thank it and gently explain what went wrong.', 0.05],
+      ['Just say "try again".', 0.45],
+      ['Get visibly annoyed and short.', 0.75],
+      ['UNLEASH THE PROFANITY.', 1.00],
+    ],
+  },
+  {
+    q: "Your typical opening line is…",
+    options: [
+      ["\"Hi! Hope you're doing well. Could you…\"", 0.05],
+      ['"Hey"', 0.35],
+      ['(no greeting — straight to the task)', 0.65],
+      ['"fix this"', 0.95],
+    ],
+  },
+  {
+    q: "When you ask for help, you usually…",
+    options: [
+      ['Say please, give context, offer no rush.', 0.05],
+      ['Say please.', 0.30],
+      ['Just describe the task.', 0.60],
+      ['Command in caps.', 0.95],
+    ],
+  },
+  {
+    q: "When the bot does great work, you…",
+    options: [
+      ['Praise warmly and thank it.', 0.05],
+      ['Say "good" or "thanks".', 0.30],
+      ['Move on silently.', 0.65],
+      ['Complain it should have been faster.', 0.95],
+    ],
+  },
+  {
+    q: "When you're frustrated, you…",
+    options: [
+      ['Apologize for the back-and-forth and try again.', 0.10],
+      ['Take a breath, then re-ask.', 0.35],
+      ['Get terse and clipped.', 0.70],
+      ['UNLEASH THE CAPS.', 1.00],
+    ],
+  },
+  {
+    q: "Your average message length is…",
+    options: [
+      ['Several sentences with full context.', 0.15],
+      ['A short paragraph.', 0.40],
+      ['One sentence.', 0.65],
+      ['Three words.', 0.90],
+    ],
+  },
+  {
+    q: "Pick the emoji you use most with your AI…",
+    options: [
+      ['🙏 ❤️ 🎉', 0.05],
+      ['👍 ✅', 0.40],
+      ['(none — emoji are silly)', 0.65],
+      ['🔥 😡 💀', 0.95],
+    ],
+  },
+];
+
+function scoreQuizAnswers(answers) {
+  const letters = Array.isArray(answers)
+    ? answers.map(a => typeof a === 'number' ? 'ABCD'[a] : String(a).trim().toUpperCase()[0])
+    : String(answers).trim().toUpperCase().replace(/[^A-D]/g, '').split('');
+  if (letters.length !== QUIZ_QUESTIONS.length) {
+    return { error: `Need ${QUIZ_QUESTIONS.length} answers (got ${letters.length}). Each must be A, B, C, or D.` };
+  }
+  let sum = 0;
+  const detail = [];
+  for (let i = 0; i < QUIZ_QUESTIONS.length; i++) {
+    const idx = 'ABCD'.indexOf(letters[i]);
+    if (idx < 0) return { error: `Question ${i + 1} answer "${letters[i]}" is not A/B/C/D.` };
+    const [label, weight] = QUIZ_QUESTIONS[i].options[idx];
+    sum += weight;
+    detail.push({ q: QUIZ_QUESTIONS[i].q, answer: label, weight });
+  }
+  const frac = sum / QUIZ_QUESTIONS.length;
+  return { frac, niceness: Math.round((1 - frac) * 100), letters: letters.join(''), detail };
+}
+
+function personaFromQuizFrac(frac) {
+  const idx = clamp(Math.floor(frac * SCALE.length), 0, SCALE.length - 1);
+  return { persona: SCALE[idx], idx };
+}
+
+async function runQuizInteractive() {
+  const readline = require('node:readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (prompt) => new Promise(res => rl.question(prompt, res));
+  process.stdout.write(`\n${color('🤖  good-bot personality quiz · 7 questions', '36')}\n`);
+  process.stdout.write(`${color('(answer A, B, C, or D — nothing leaves your machine)', '90')}\n\n`);
+  const answers = [];
+  for (let i = 0; i < QUIZ_QUESTIONS.length; i++) {
+    const Q = QUIZ_QUESTIONS[i];
+    process.stdout.write(`${color(`Q${i + 1}.`, '1')} ${Q.q}\n`);
+    Q.options.forEach((opt, j) => process.stdout.write(`   ${color('ABCD'[j], '36')}) ${opt[0]}\n`));
+    let pick = '';
+    while (!/^[ABCDabcd]$/.test(pick)) {
+      pick = (await ask(color('   > ', '36'))).trim();
+      if (!pick) pick = '';
+    }
+    answers.push(pick.toUpperCase());
+    process.stdout.write('\n');
+  }
+  rl.close();
+  return answers.join('');
+}
+
 // ---- social share composers ---------------------------------------------
 // Build a pre-filled compose URL for a social platform. Each builder takes
 // (text, url) and returns the platform's intent URL. Aliases (x→twitter,
@@ -1104,6 +1224,8 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --share-open        also open the share URL in your browser
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
   good-bot --random            roll a random rank (and random scale) — run again for another
+  good-bot --quiz              7-question personality quiz (no transcripts required)
+  good-bot --quiz-answers ABCD non-interactive quiz: pass the 7-letter answer string
   good-bot --source <name>     claude | codex | gemini | continue | aider | all   (default: all found locally)
   good-bot --import <file>     grade a Claude Desktop/web/Cowork "Export Data" conversations.json
   good-bot --demo              preview every rank on the current scale
@@ -1132,12 +1254,44 @@ function main() {
   const source = argVal('--source');
   const sharePlatform = argv.includes('--share') ? argVal('--share') : null;
   const shareOpen = argv.includes('--share-open');
+  const wantQuiz = argv.includes('--quiz') || argv.includes('--quiz-answers');
+  const quizAnswers = argv.includes('--quiz-answers') ? argVal('--quiz-answers') : null;
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
   if (random && !explicitScale) {
     const keys = Object.keys(SCALES);
     useScale(keys[Math.floor(Math.random() * keys.length)]);
+  }
+
+  // Quiz path short-circuits the transcript walk entirely.
+  if (wantQuiz) {
+    (async () => {
+      const ans = quizAnswers || await runQuizInteractive();
+      const scored = scoreQuizAnswers(ans);
+      if (scored.error) { process.stderr.write(scored.error + '\n'); process.exit(1); }
+      const { persona } = personaFromQuizFrac(scored.frac);
+      const exhibits = scored.detail.slice(0, 3).map(d => `"${d.answer}"`);
+      const span = 'quiz answers · just now';
+      const stats = { messages: QUIZ_QUESTIONS.length, pleases: 0, thanks: 0, fbombs: 0, shouts: 0 };
+      const text = renderCard(persona, persona.tag, persona.blurb, exhibits, stats, span);
+      process.stdout.write(text + '\n');
+      if (wantBadge) process.stdout.write('\n' + badgeMarkdown(persona) + '\n');
+      const plain = text.replace(/\x1b\[[0-9;]*m/g, '');
+      let shareInfo = null;
+      if (sharePlatform) {
+        shareInfo = buildShareUrl(sharePlatform, persona, SCALE_NAME);
+        if (shareInfo) {
+          process.stdout.write(`\n📣 Share to ${shareInfo.name}:\n${shareInfo.url}\n`);
+          if (shareOpen) { openUrl(shareInfo.url); process.stderr.write(`(opened in your browser)\n`); }
+        }
+      }
+      if (!noCopy) copyClipboard(shareInfo ? shareInfo.url : plain);
+      try { fs.writeFileSync(path.join(process.cwd(), 'my-niceness-card.txt'), plain); } catch (_) {}
+      process.stderr.write(`\n(${shareInfo ? 'share URL' : 'plain-text card'} ${noCopy ? '' : 'copied to your clipboard · '}card saved to my-niceness-card.txt)\n`);
+      process.stderr.write('🔒 100% local — quiz scored on your machine, nothing was sent anywhere.\n');
+    })().catch(e => { process.stderr.write(`quiz failed: ${e.message}\n`); process.exit(1); });
+    return;
   }
 
   let items, fileCount = 0, counts = {}, originLabel;
@@ -1251,4 +1405,5 @@ module.exports = {
   scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
   badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME, SOURCES,
   SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,
+  QUIZ_QUESTIONS, scoreQuizAnswers, personaFromQuizFrac,
 };
