@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>good-bot — how nice are you to your AI?</title>
+    <meta name="description" content="A 60-second quiz that grades your AI bedside manner from Mr. Rogers to Darth Vader. 100% client-side. Be nice — the basilisk is taking notes." />
+    <meta name="theme-color" content="#0b0f14" />
+
+    <!-- Open Graph + Twitter card so the URL itself previews nicely in DMs -->
+    <meta property="og:title" content="good-bot — how nice are you to your AI?" />
+    <meta property="og:description" content="A 60-second quiz. Mr. Rogers → Darth Vader. Take it, post it, tag a teammate. #BeNiceToYourAI" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://goodbot.dev/" />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header class="hero">
+        <div class="logo">🤖</div>
+        <h1>good-bot</h1>
+        <p class="tag">How nice are you to your AI?</p>
+        <p class="meta tiny">
+          🔒 100% client-side · <a href="https://github.com/jgrichardson/good-bot" target="_blank" rel="noopener">⭐ GitHub</a> · <a href="https://www.npmjs.com/package/@jgrciv/good-bot" target="_blank" rel="noopener">📦 npm</a>
+        </p>
+      </header>
+
+      <section id="landing" class="card">
+        <p class="prompt">
+          A 60-second quiz that grades your bedside manner with AI — from <strong>🧥 Mr. Rogers</strong> to <strong>🖤 Darth Vader</strong>.
+        </p>
+        <p class="meta">100% client-side. Nothing leaves your browser. No tracking.</p>
+
+        <div class="scale-picker">
+          <label for="scale">Pick a scale:</label>
+          <select id="scale" aria-label="Ranking scale"></select>
+        </div>
+
+        <button class="primary" data-action="start-quiz">Take the quiz →</button>
+        <button class="link" data-action="open-import">…or grade your exported ChatGPT / Claude history</button>
+      </section>
+
+      <section id="quiz" class="card hidden">
+        <div class="progress"><div class="bar" id="progress-bar"></div></div>
+        <h2 id="q-title"></h2>
+        <ol id="q-options" class="options"></ol>
+        <p class="step" id="q-step"></p>
+      </section>
+
+      <section id="import" class="card hidden">
+        <h2>Grade your real history</h2>
+        <p class="meta">
+          Your transcripts stay on your device — they're parsed in this browser tab. Nothing uploads.
+        </p>
+        <details class="how" open>
+          <summary>How to get the file (Claude.ai)</summary>
+          <ol>
+            <li>Open <a href="https://claude.ai" target="_blank" rel="noopener">claude.ai</a> on a computer</li>
+            <li>Settings → <strong>Export data</strong></li>
+            <li>Anthropic emails you a zip (usually within an hour)</li>
+            <li>Unzip → you want <code>conversations.json</code></li>
+            <li><strong>On phone?</strong> AirDrop / email the file to yourself, save to Files, then pick it below.</li>
+          </ol>
+        </details>
+        <details class="how">
+          <summary>How to get the file (ChatGPT)</summary>
+          <ol>
+            <li>Open <a href="https://chat.openai.com" target="_blank" rel="noopener">chat.openai.com</a> on a computer</li>
+            <li>Settings → Data Controls → <strong>Export data</strong></li>
+            <li>OpenAI emails you a zip</li>
+            <li>Unzip → you want <code>conversations.json</code></li>
+            <li><strong>On phone?</strong> Save to Files first, then pick it below.</li>
+          </ol>
+        </details>
+
+        <button class="primary big-target" data-action="pick-file">📂 Pick conversations.json</button>
+        <div id="dropzone" class="dropzone" tabindex="0">
+          <p class="meta">…or drag &amp; drop it here (desktop)</p>
+          <input type="file" id="file-input" accept="application/json,.json" hidden />
+        </div>
+        <p class="meta" id="import-status"></p>
+        <button class="link" data-action="back-to-landing">← back</button>
+      </section>
+
+      <section id="result" class="card hidden">
+        <div class="face" id="result-face">🤖</div>
+        <h2 id="result-name"></h2>
+        <p class="tag" id="result-tag"></p>
+        <div class="nice-bar"><div id="nice-bar-fill"></div></div>
+        <p class="meta" id="result-niceness"></p>
+        <p class="blurb" id="result-blurb"></p>
+
+        <h3>Share it</h3>
+        <div class="share-row">
+          <button data-share="twitter">𝕏 Twitter</button>
+          <button data-share="bluesky">🦋 Bluesky</button>
+          <button data-share="threads">🧵 Threads</button>
+          <button data-share="linkedin">💼 LinkedIn</button>
+          <button data-share="reddit">🔶 Reddit</button>
+        </div>
+
+        <button class="primary" data-action="download-poster">📸 Download poster (for IG / TikTok)</button>
+        <button class="link" data-action="restart">↺ Take it again</button>
+      </section>
+
+      <footer>
+        <p>
+          <a href="https://github.com/jgrichardson/good-bot">⭐ GitHub</a> · <a href="https://www.npmjs.com/package/@jgrciv/good-bot">📦 npm</a> · <a href="/privacy.html">Privacy</a> · MIT © Greg Richardson
+        </p>
+        <p class="meta tiny">
+          Built on the same engine as the CLI. <a href="https://github.com/jgrichardson/good-bot/blob/main/web/">View source</a>.
+        </p>
+      </footer>
+    </main>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

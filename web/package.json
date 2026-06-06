@@ -1,0 +1,14 @@
+{
+  "name": "good-bot-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-hosted quiz + import flow for good-bot — runs on any device, 100% client-side.",
+  "scripts": {
+    "dev": "node build.mjs --watch --serve",
+    "build": "node build.mjs",
+    "smoke": "node build.mjs && test -f dist/index.html && test -f dist/main.js && echo ok"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
