@@ -1141,6 +1141,43 @@ async function runQuizInteractive() {
   return answers.join('');
 }
 
+// ---- webhook posting ---------------------------------------------------
+// Opt-in: post the (already-redacted) card text to a Slack-/Discord-compatible
+// webhook for the team channel leaderboard mechanic. The body is JSON
+// {"text": "..."}, which both Slack incoming webhooks and Discord webhooks
+// accept. We use node:https so the project stays dependency-free.
+
+function postWebhook(url, plainText) {
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL(url); } catch (e) { return resolve({ ok: false, error: `bad URL: ${e.message}` }); }
+    if (u.protocol !== 'https:') {
+      return resolve({ ok: false, error: 'webhook URL must be https://' });
+    }
+    const lib = require('node:https');
+    const body = JSON.stringify({ text: plainText });
+    const req = lib.request({
+      method: 'POST',
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + (u.search || ''),
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      timeout: 8000,
+    }, (res) => {
+      let buf = '';
+      res.on('data', (c) => { buf += c.toString('utf8'); if (buf.length > 4096) buf = buf.slice(0, 4096); });
+      res.on('end', () => {
+        const ok = res.statusCode >= 200 && res.statusCode < 300;
+        resolve({ ok, status: res.statusCode, body: buf.slice(0, 200), host: u.hostname });
+      });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req.on('error', (e) => resolve({ ok: false, error: e.message }));
+    req.write(body);
+    req.end();
+  });
+}
+
 // ---- export + compare --------------------------------------------------
 // --export json writes a self-contained card record so two runs can be
 // compared head-to-head later. --compare a.json b.json reads two such files
@@ -1403,6 +1440,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --export json       write good-bot-card.json (for --compare later)
   good-bot --compare a.json b.json  head-to-head: whose AI relationship wins?
   good-bot --me <name>         label the card (for export + compare display)
+  good-bot --post-webhook URL  opt-in: POST the (redacted) card to a Slack/Discord webhook
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
@@ -1443,6 +1481,7 @@ function main() {
   const compareIdx = argv.indexOf('--compare');
   const compareFiles = compareIdx >= 0 ? argv.slice(compareIdx + 1, compareIdx + 3) : null;
   const myName = argv.includes('--me') ? argVal('--me') : null;
+  const webhookUrl = argv.includes('--post-webhook') ? argVal('--post-webhook') : null;
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
@@ -1509,6 +1548,14 @@ function main() {
         process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
       }
       if (!noHistory) recordRun(persona, SCALE_NAME, scored.niceness);
+      if (webhookUrl) {
+        let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
+        process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || webhookUrl}\n`);
+        postWebhook(webhookUrl, plain).then(r => {
+          if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
+          else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status + ' — ' + (r.body || ''))}\n`);
+        });
+      }
     })().catch(e => { process.stderr.write(`quiz failed: ${e.message}\n`); process.exit(1); });
     return;
   }
@@ -1620,6 +1667,14 @@ function main() {
     process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
   }
   if (!noHistory) recordRun(card.persona, SCALE_NAME, analysis.niceness);
+  if (webhookUrl) {
+    let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
+    process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || webhookUrl}\n`);
+    postWebhook(webhookUrl, plain).then(r => {
+      if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
+      else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status + ' — ' + (r.body || ''))}\n`);
+    });
+  }
 }
 
 if (require.main === module) main();
@@ -1634,4 +1689,5 @@ module.exports = {
   HISTORY_PATH, readHistory, writeHistory, recordRun, forgetHistory,
   summarizeHistory, renderStreakReport,
   buildExportRecord, readCardJson, renderCompare,
+  postWebhook,
 };
