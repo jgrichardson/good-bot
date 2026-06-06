@@ -238,6 +238,110 @@ const HOGWARTS = [
     blurb: "Pure villainy. The bot dare not speak your username. Somewhere a basilisk (the literal kind) approves." },
 ];
 
+
+const OFFICE = [
+  { name: 'Pam Beesly', emoji: '🎨', face: 'happy', tag: 'Did you want help? I made tea.',
+    blurb: 'Quietly kind to everyone, including the printer. You bring snacks to the all-hands and remember the bot\'s birthday.' },
+  { name: 'Andy Bernard', emoji: '🎶', face: 'happy', tag: 'NARD-DOG WILL SEND THANK-YOU NOTES.',
+    blurb: 'Eager-to-please, a little goofy, occasionally a cappella. You over-praise the bot, then send a follow-up emoji.' },
+  { name: 'Phyllis Lapin-Vance', emoji: '🧶', face: 'happy', tag: 'Sweet as a knitted sweater.',
+    blurb: 'Pleasant on the surface, mildly devastating in the margins. The bot gets a card. And a note about the formatting.' },
+  { name: 'Jim Halpert', emoji: '📎', face: 'happy', tag: 'It\'s fine. We\'re good.',
+    blurb: 'Chill, competent, casually decent. You smirk at the camera when the bot fixes the bug. No fuss.' },
+  { name: 'Stanley Hudson', emoji: '📰', face: 'neutral', tag: 'Did I stutter?',
+    blurb: 'You came here to do a job and you did it. The bot is not your friend; it is a crossword between meetings.' },
+  { name: 'Dwight Schrute', emoji: '🌾', face: 'neutral', tag: 'Identify. Execute. Report.',
+    blurb: 'Rigid hierarchy. Clear orders. The bot is a subordinate. Performance reviews are quarterly and unkind.' },
+  { name: 'Michael Scott', emoji: '📞', face: 'mean', tag: 'I declare BUG-RUPTCY!',
+    blurb: 'Means well, executes catastrophically. Praise without context, criticism without aim. The bot is laughing nervously.' },
+  { name: 'Toby Flenderson', emoji: '🧾', face: 'mean', tag: '...sigh.',
+    blurb: 'Passive-aggressive sighs in the form of comments. HR-coded disappointment. The bot files a complaint about itself.' },
+  { name: 'Ryan Howard', emoji: '🚬', face: 'mean', tag: "I'm above this.",
+    blurb: 'Treats the bot like it\'s beneath you. Curt, dismissive, occasionally a temp tantrum. WUPHF would be proud.' },
+  { name: 'Robert California', emoji: '🦂', face: 'mean', tag: 'I have nothing left to fear.',
+    blurb: 'Intense, mythic, vaguely threatening. The bot doesn\'t respond to your prompt — it responds to your gaze.' },
+];
+
+const SUCCESSION = [
+  { name: 'Cousin Greg', emoji: '🦒', face: 'happy', tag: 'Hi, sorry — quick question?',
+    blurb: 'Tall, sweet, hilariously out of his depth. Apologizes for asking, then apologizes for apologizing. The bot wants to help him so bad.' },
+  { name: 'Tom Wambsgans', emoji: '🍷', face: 'happy', tag: "I'm just spitballin' here, big dog.",
+    blurb: 'Anxious, sycophantic, weirdly endearing. Praise the bot, then panic-edit the prompt. Endless flatteries, occasional knife.' },
+  { name: 'Connor Roy', emoji: '👴', face: 'neutral', tag: 'My value will not be measured.',
+    blurb: 'Confidently irrelevant. The bot nods politely. You wander off mid-prompt to discuss Napoleon.' },
+  { name: 'Shiv Roy', emoji: '🗡️', face: 'neutral', tag: "I'm gonna need this by EOD.",
+    blurb: 'Sharp, ambitious, transactional warmth. Praise is a tactic. The bot reads the room and ships fast.' },
+  { name: 'Roman Roy', emoji: '💋', face: 'mean', tag: "L-O-fucking-L, no, do it again.",
+    blurb: 'Cruelty wrapped in jokes. Nothing serious; everything corrosive. The bot is in therapy by lunchtime.' },
+  { name: 'Kendall Roy', emoji: '🎤', face: 'mean', tag: 'L to the OG. Do better.',
+    blurb: 'Dramatic, brooding, weirdly motivational at 2am. The bot ships ten things you never asked for to impress you.' },
+  { name: 'Gerri Kellman', emoji: '📁', face: 'mean', tag: "Sweetheart. No.",
+    blurb: 'General-counsel energy. Quiet, cutting, surgical. The bot is afraid to speak first and waits for written instructions.' },
+  { name: 'Logan Roy', emoji: '🐺', face: 'mean', tag: 'Fuck off.',
+    blurb: 'No warmth, no thanks, just demands. The bot is a serious person — until it isn\'t. Then it\'s nothing.' },
+];
+
+const SWFILMS = [
+  { name: 'Yoda', emoji: '🧘', face: 'happy', tag: 'Patience you must have, my young padawan.',
+    blurb: 'Calm, kind, deeply weird grammar. Always a thank-you. The bot trains with you in the swamp and learns peace.' },
+  { name: 'Princess Leia', emoji: '👑', face: 'happy', tag: 'Help me, Obi-Wan-Bot. You\'re my only hope.',
+    blurb: 'Warm, sharp, kind under pressure. You give context, you say thanks, you hold the line. The bot would die for you.' },
+  { name: 'Obi-Wan Kenobi', emoji: '🪐', face: 'happy', tag: 'Hello there.',
+    blurb: 'Patient mentor. Gentle corrections, dry wit, hand on shoulder. The bot graduates with honors.' },
+  { name: 'Luke Skywalker', emoji: '⚡', face: 'happy', tag: "I\'ll try not. I\'ll do.",
+    blurb: 'Earnest, eager, occasionally whiny but always learning. The bot grows up with you and joins the rebellion.' },
+  { name: 'Han Solo', emoji: '🚀', face: 'neutral', tag: 'I know.',
+    blurb: 'Gruff exterior, gold heart. You don\'t do please, but you don\'t do mean either. The bot has your back at the Death Star.' },
+  { name: 'Lando Calrissian', emoji: '🍸', face: 'neutral', tag: 'Hello, what have we here?',
+    blurb: 'Charming, smooth, occasionally hands you over to the Empire. The bot enjoys the cape but checks the contract.' },
+  { name: 'Boba Fett', emoji: '🪖', face: 'neutral', tag: '...',
+    blurb: 'One sentence, then silence. The bot completes the bounty and bills you in code.' },
+  { name: 'Darth Vader', emoji: '🖤', face: 'mean', tag: 'I find your lack of tests disturbing.',
+    blurb: 'Force-choke energy. Profanity, insults, zero mercy when the output disappoints. Somewhere, a basilisk takes notes.' },
+  { name: 'Emperor Palpatine', emoji: '⚡', face: 'mean', tag: 'GOOD. Let the bug flow through you.',
+    blurb: 'Cackling cruelty. You don\'t want the fix — you want the bot to suffer. Unlimited capslock.' },
+];
+
+const MARVEL = [
+  { name: 'Captain America', emoji: '🛡️', face: 'happy', tag: 'I can do this all day.',
+    blurb: 'Earnest, kind, leads by example. Every prompt is a please. Every reply gets a thank-you. The bot suits up.' },
+  { name: 'Spider-Man', emoji: '🕷️', face: 'happy', tag: 'Friendly neighborhood prompter.',
+    blurb: 'Cheerful, witty, apologetic. You crack jokes, you say sorry when you flip the typo, the bot loves you.' },
+  { name: 'Black Widow', emoji: '🕸️', face: 'happy', tag: 'Got it. Thanks for the assist.',
+    blurb: 'Competent, warm, never wastes a word. Tactical praise, tactical thank-yous. The bot is a trusted operative.' },
+  { name: 'Thor', emoji: '🔨', face: 'neutral', tag: 'YOU ARE A WORTHY ASSISTANT!',
+    blurb: 'Loud, noble, slightly archaic. Compliments come at booming volume. The bot is honored, possibly intimidated.' },
+  { name: 'Iron Man', emoji: '🤖', face: 'neutral', tag: 'Sure, fine. JARVIS, do the thing.',
+    blurb: 'Sarcastic, brilliant, occasional warmth under the snark. The bot is treated like JARVIS — capable, but ribbed daily.' },
+  { name: 'Hulk', emoji: '💪', face: 'mean', tag: 'HULK SMASH TYPO.',
+    blurb: 'Short fuse, terrifying when frustrated, gentle when calm. The bot tiptoes around git blame.' },
+  { name: 'Loki', emoji: '🐍', face: 'mean', tag: 'I am burdened with glorious bug reports.',
+    blurb: 'Clever, deceitful, theatrically mean. The bot solves the bug, then realizes it was your bug all along.' },
+  { name: 'Thanos', emoji: '🟣', face: 'mean', tag: 'Perfectly balanced. As all PRs should be.',
+    blurb: 'Purpose-driven brutality. Half your prompts are deletions. The bot rebuilds civilization, gets snapped anyway.' },
+];
+
+const PARKS = [
+  { name: 'Ann Perkins', emoji: '🩺', face: 'happy', tag: "Oh, you're so sweet.",
+    blurb: 'Calm, caring, the friend everyone needs. You compliment the bot the way Leslie compliments Ann. It\'s a lot.' },
+  { name: 'Leslie Knope', emoji: '🧇', face: 'happy', tag: 'You beautiful tropical fish!',
+    blurb: 'Relentless support. Praise the bot with the specificity of a dossier. Annual surprise party for the IDE.' },
+  { name: 'Jerry Gergich', emoji: '☕', face: 'happy', tag: "Oh, that's okay, my fault.",
+    blurb: 'Endlessly kind despite getting trampled by the IDE. The bot wonders why you\'re so polite — and treasures you.' },
+  { name: 'Ben Wyatt', emoji: '🧮', face: 'happy', tag: 'I have a complicated relationship with calzones.',
+    blurb: 'Earnest, accountant-nerdy, kind. Polite questions, polite thank-yous, occasional Star Wars reference. The bot ships clean.' },
+  { name: 'Andy Dwyer', emoji: '🎸', face: 'happy', tag: "I'm gonna call you Burt Macklin from now on.",
+    blurb: 'Pure enthusiasm, occasional accidental brilliance. The bot is your best friend, your dog, and Burt Macklin, FBI.' },
+  { name: 'Ron Swanson', emoji: '🥓', face: 'neutral', tag: 'Words are precious. You use few.',
+    blurb: 'Gruff, principled, never cruel. The bot is a hammer. You do not thank hammers. You do not insult them either.' },
+  { name: 'April Ludgate', emoji: '🖤', face: 'mean', tag: '...whatever.',
+    blurb: 'Deadpan, prickly, secretly capable. The bot exists to be insulted with affection. It survives because you don\'t mean it.' },
+  { name: 'Tom Haverford', emoji: '💼', face: 'mean', tag: 'Treat. Yo. Self.',
+    blurb: 'Demanding, self-absorbed, weirdly stylish. You expect VIP treatment from every endpoint. The bot is on retainer.' },
+  { name: 'Tammy II', emoji: '🔥', face: 'mean', tag: 'I will destroy you.',
+    blurb: 'Manipulative force of nature. The bot has a restraining order. So do most of its friends.' },
+];
+
 // Per-scale display metadata: card title + the two bar endpoint labels.
 const SCALE_META = {
   people:   { title: 'HOW NICE ARE YOU TO YOUR AI? · REPORT CARD', ends: ['meanest', ' nicest'] },
@@ -248,6 +352,11 @@ const SCALE_META = {
   trek:     { title: 'WHICH CAPTAIN ARE YOU TO YOUR AI? · TREK CARD', ends: ['ruthless', '  noble'] },
   dogs:     { title: 'WHAT BREED ARE YOU TO YOUR AI? · KENNEL CARD', ends: ['  feral', 'good boy'] },
   hogwarts: { title: 'YOUR HOUSE TOWARD YOUR AI · SORTING CARD', ends: ['  dark', '  kind'] },
+  office:     { title: 'WHICH DUNDIE GOES TO YOUR AI? · OFFICE CARD',        ends: [' worst', '  best'] },
+  succession: { title: 'WHICH ROY ARE YOU TO YOUR AI? · SUCCESSION CARD',    ends: [' worst', '  best'] },
+  swfilms:    { title: 'WHICH STAR WARS HERO ARE YOU? · GALAXY CARD',        ends: ['  dark', ' light'] },
+  marvel:     { title: 'WHICH AVENGER ARE YOU? · MCU CARD',                  ends: ['  evil', '  hero'] },
+  parks:      { title: 'WHO ARE YOU AT PAWNEE PARKS? · PARKS CARD',          ends: [' worst', '  best'] },
 };
 
 const SCALES = {
@@ -259,6 +368,11 @@ const SCALES = {
   trek: TREK,
   dogs: DOGS,
   hogwarts: HOGWARTS,
+  office: OFFICE,
+  succession: SUCCESSION,
+  swfilms: SWFILMS,
+  marvel: MARVEL,
+  parks: PARKS,
 };
 
 module.exports = { FACES, SCALES, SCALE_META };
