@@ -116,6 +116,125 @@ function extractCodex(obj) {
   return isNoise(text) ? [] : [text];
 }
 
+// Gemini CLI session entry. The tool writes JSONL with each event as a row;
+// human messages have role 'user' and a string `content` (or `parts[].text`).
+// We accept both shapes since the format has evolved.
+function extractGemini(obj) {
+  if (!obj) return [];
+  const role = obj.role || (obj.message && obj.message.role) || null;
+  if (role !== 'user') return [];
+  const c = obj.content != null ? obj.content : (obj.message && obj.message.content);
+  let text = '';
+  if (typeof c === 'string') text = c;
+  else if (Array.isArray(c)) text = c.filter(p => p && (p.text || typeof p === 'string')).map(p => p.text || p).join(' ');
+  else if (Array.isArray(obj.parts)) text = obj.parts.filter(p => p && p.text).map(p => p.text).join(' ');
+  text = String(text || '').trim();
+  return isNoise(text) ? [] : [text];
+}
+
+// Continue.dev session entry. Each session file is a JSON document at
+// ~/.continue/sessions/<id>.json with a `history` (or `messages`) array of
+// `{role, content}` items. extractContinue handles ONE such item; the full
+// JSON document is unrolled by collectContinue below.
+function extractContinue(obj) {
+  if (!obj) return [];
+  const role = obj.role;
+  if (role !== 'user') return [];
+  const c = obj.content;
+  let text = '';
+  if (typeof c === 'string') text = c;
+  else if (Array.isArray(c)) text = c.filter(p => p && p.text).map(p => p.text).join(' ');
+  text = String(text || '').trim();
+  return isNoise(text) ? [] : [text];
+}
+
+function collectContinue() {
+  const root = path.join(os.homedir(), '.continue', 'sessions');
+  const items = [];
+  let fileCount = 0;
+  let entries;
+  try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch (_) { return { items, fileCount }; }
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith('.json')) continue;
+    const file = path.join(root, e.name);
+    let data;
+    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { continue; }
+    fileCount++;
+    const history = Array.isArray(data.history) ? data.history : (Array.isArray(data.messages) ? data.messages : []);
+    const ts = data.createdAt || data.created_at || null;
+    const project = data.title || data.workspace || null;
+    for (const msg of history) {
+      const texts = extractContinue(msg && msg.message ? msg.message : msg);
+      for (const t of texts) items.push({ text: t, ts, project });
+    }
+  }
+  return { items, fileCount };
+}
+
+// Aider stores chat history as markdown in `.aider.chat.history.md` files.
+// Human prompts are lines starting with `####`. We return human prompts split
+// by the marker; the walker only descends into the user's chosen root (defaults
+// to $HOME) and stops at 4 levels to avoid scanning everything.
+function extractAiderMarkdown(text) {
+  if (!text || typeof text !== 'string') return [];
+  const out = [];
+  const lines = text.split('\n');
+  let buf = null;
+  for (const line of lines) {
+    if (line.startsWith('#### ')) {
+      if (buf !== null) { const t = buf.trim(); if (!isNoise(t)) out.push(t); }
+      buf = line.slice(5);
+    } else if (buf !== null) {
+      if (line.startsWith('# ') || line.startsWith('> ')) {
+        const t = buf.trim(); if (!isNoise(t)) out.push(t);
+        buf = null;
+      } else {
+        buf += '\n' + line;
+      }
+    }
+  }
+  if (buf !== null) { const t = buf.trim(); if (!isNoise(t)) out.push(t); }
+  return out;
+}
+
+function collectAider() {
+  // Aider drops .aider.chat.history.md in each project root. We look at the
+  // user's homedir + ~/Projects + ~/code + ~/src + ~/dev for these files.
+  // Users with chats elsewhere can `--source aider --path <dir>` if we ever
+  // expose that knob; for now this covers the common cases without scanning
+  // an entire filesystem.
+  const roots = [
+    os.homedir(),
+    path.join(os.homedir(), 'Projects'),
+    path.join(os.homedir(), 'code'),
+    path.join(os.homedir(), 'src'),
+    path.join(os.homedir(), 'dev'),
+    path.join(os.homedir(), 'work'),
+    path.join(os.homedir(), 'workspace'),
+  ];
+  const items = [];
+  let fileCount = 0;
+  const seen = new Set();
+  for (const r of roots) {
+    let entries;
+    try { entries = fs.readdirSync(r, { withFileTypes: true }); } catch (_) { continue; }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      const projectDir = path.join(r, e.name);
+      const histPath = path.join(projectDir, '.aider.chat.history.md');
+      if (seen.has(histPath)) continue;
+      seen.add(histPath);
+      let data;
+      try { data = fs.readFileSync(histPath, 'utf8'); } catch (_) { continue; }
+      fileCount++;
+      const texts = extractAiderMarkdown(data);
+      const ts = (() => { try { return fs.statSync(histPath).mtime.toISOString(); } catch (_) { return null; } })();
+      for (const t of texts) items.push({ text: t, ts, project: e.name });
+    }
+  }
+  return { items, fileCount };
+}
+
 function walk(dir) {
   let out = [];
   let entries;
@@ -158,6 +277,9 @@ function collectClaude() {
 const SOURCES = {
   claude: { label: 'Claude Code', collect: collectClaude },
   codex: { label: 'Codex', root: path.join(os.homedir(), '.codex', 'sessions'), extract: extractCodex },
+  gemini: { label: 'Gemini CLI', root: path.join(os.homedir(), '.gemini', 'sessions'), extract: extractGemini },
+  continue: { label: 'Continue.dev', collect: collectContinue },
+  aider: { label: 'Aider', collect: collectAider },
 };
 
 function collectFromSource(src) {
@@ -982,7 +1104,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --share-open        also open the share URL in your browser
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
   good-bot --random            roll a random rank (and random scale) — run again for another
-  good-bot --source <name>     claude | codex | all   (default: all found locally)
+  good-bot --source <name>     claude | codex | gemini | continue | aider | all   (default: all found locally)
   good-bot --import <file>     grade a Claude Desktop/web/Cowork "Export Data" conversations.json
   good-bot --demo              preview every rank on the current scale
   good-bot --no-copy           don't touch the clipboard
@@ -1028,8 +1150,14 @@ function main() {
     const r = collectMessages(source || 'all');
     items = r.items; fileCount = r.fileCount; counts = r.counts;
     if (!items.length) {
-      process.stderr.write('No local AI-assistant transcripts found.\nTried Claude Code (~/.claude/projects) and Codex (~/.codex/sessions).\n' +
-        'For Claude Desktop/web/Cowork: export your data and run with --import conversations.json\n');
+      process.stderr.write(
+        'No local AI-assistant transcripts found.\n' +
+        'Tried: Claude Code (~/.claude/projects), Codex (~/.codex/sessions),\n' +
+        '       Gemini CLI (~/.gemini/sessions), Continue.dev (~/.continue/sessions),\n' +
+        '       Aider (~/**/.aider.chat.history.md).\n' +
+        'For Claude Desktop/web/Cowork: export your data and run with --import conversations.json\n' +
+        'For Cursor / Windsurf: export your chat history and use --import (JSON).\n'
+      );
       process.exit(1);
     }
     originLabel = Object.entries(counts).map(([k, v]) => `${v} from ${k}`).join(' + ');
@@ -1118,8 +1246,9 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
+  sanitize, extractTexts, extractCodex, extractGemini, extractContinue, extractAiderMarkdown,
+  importExport, scoreMessage, shouty, analyze,
   scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
-  badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME,
+  badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME, SOURCES,
   SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,
 };
