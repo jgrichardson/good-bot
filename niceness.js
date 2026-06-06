@@ -1021,6 +1021,48 @@ function copyClipboard(text) {
   try { spawnSync(cmd[0], cmd[1], { input: text }); } catch (_) {}
 }
 
+// ---- instagram / tiktok story helper -----------------------------------
+// Neither Instagram nor TikTok exposes a public compose URL — both are
+// app-walled. The best we can do for those platforms is generate the vertical
+// 1080x1920 Wrapped PNG (perfect for IG Stories / Reels / TikTok), stage a
+// ready-to-paste caption on the user's clipboard, and tell them exactly what
+// to do next. This is the dead-simple path for non-developers.
+
+function appShareCaption(persona, scaleName, app) {
+  const e = persona.emoji ? persona.emoji + ' ' : '';
+  const tag = persona.tag ? `\n"${persona.tag}"\n` : '\n';
+  const a = (app || 'social').toLowerCase();
+  const ctaByApp = {
+    instagram: 'Take the quiz: npx @jgrciv/good-bot --quiz',
+    tiktok: 'Take the quiz: npx @jgrciv/good-bot --quiz',
+  };
+  const cta = ctaByApp[a] || ctaByApp.instagram;
+  return `I'm ${e}${persona.name} on the AI niceness scale (${scaleName}).${tag}How nice are YOU to your AI?\n\n${cta}\n\n#BeNiceToYourAI #AI #ClaudeCode`;
+}
+
+function printAppShareInstructions(app, pngPath, caption) {
+  const a = (app || 'social').toLowerCase();
+  const instructions = {
+    instagram: [
+      '',
+      `📸 ${color('Instagram share — 3 steps:', '1;35')}`,
+      `   1. Open Instagram → tap '+' or swipe to ${color('Stories', '1')} / Reels`,
+      `   2. Pick ${color(pngPath, '36')} from your photo library`,
+      `   3. Paste the caption (already on your clipboard) and post`,
+      '',
+    ],
+    tiktok: [
+      '',
+      `🎵 ${color('TikTok share — 3 steps:', '1;35')}`,
+      `   1. Open TikTok → tap '+'`,
+      `   2. Choose ${color('Upload', '1')} → pick ${color(pngPath, '36')}`,
+      `   3. Paste the caption (already on your clipboard) and post`,
+      '',
+    ],
+  };
+  return (instructions[a] || instructions.instagram).join('\n');
+}
+
 // ---- personality quiz mode ----------------------------------------------
 // Lets people who have no AI transcripts (or whose transcripts are off-machine)
 // play. 7 multiple-choice questions, each answer mapped to a position on the
@@ -1582,6 +1624,10 @@ const SHARE_PLATFORMS = {
     name: 'Reddit',
     build: (text, url) => `https://www.reddit.com/submit?title=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
   },
+  threads: {
+    name: 'Threads',
+    build: (text, url) => `https://threads.net/intent/post?text=${encodeURIComponent(text + ' ' + url)}`,
+  },
 };
 
 const REPO_URL = 'https://github.com/jgrichardson/good-bot';
@@ -1638,8 +1684,10 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
-  good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit (copies to clipboard)
+  good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit | threads (copies to clipboard)
   good-bot --share-open        also open the share URL in your browser
+  good-bot --instagram         dead-simple path: render wrapped PNG + stage IG caption
+  good-bot --tiktok            same as --instagram but with TikTok-flavored instructions
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
                                office | succession | swfilms | marvel | parks
   good-bot --random            roll a random rank (and random scale) — run again for another
@@ -1676,7 +1724,7 @@ function main() {
   const wantTimeline = argv.includes('--timeline');
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
-  const wantWrapped = argv.includes('--wrapped');
+  const wantWrapped = argv.includes('--wrapped') || argv.includes('--instagram') || argv.includes('--tiktok');
   const noCopy = argv.includes('--no-copy');
   const random = argv.includes('--random');
   const importPath = argv.includes('--import') ? argVal('--import') : null;
@@ -1685,6 +1733,9 @@ function main() {
   const shareOpen = argv.includes('--share-open');
   const wantQuiz = argv.includes('--quiz') || argv.includes('--quiz-answers');
   const quizAnswers = argv.includes('--quiz-answers') ? argVal('--quiz-answers') : null;
+  const wantInstagram = argv.includes('--instagram');
+  const wantTiktok = argv.includes('--tiktok');
+  const appShareTarget = wantInstagram ? 'instagram' : wantTiktok ? 'tiktok' : null;
   const wantStreak = argv.includes('--streak');
   const noHistory = argv.includes('--no-history');
   const wantForget = argv.includes('--forget-history');
@@ -1786,6 +1837,24 @@ function main() {
       const text = renderCard(persona, persona.tag, persona.blurb, exhibits, stats, span);
       process.stdout.write(text + '\n');
       if (wantBadge) process.stdout.write('\n' + badgeMarkdown(persona) + '\n');
+      if (wantWrapped) {
+        const wrapStats = { messages: 7, pleases: scored.detail.filter(d => d.weight < 0.4).length * 4, thanks: scored.detail.filter(d => d.weight < 0.3).length * 3, fbombs: scored.detail.filter(d => d.weight > 0.85).length, shouts: 0 };
+        const wrapped = { periods: [], warmest: null, coolest: null, spiciest: null, calmest: null, kindestProj: null, harshestProj: null, nicest: null, spicy: null };
+        try {
+          const svg = wrappedSvg(persona, wrapStats, 'quiz · just now', scored.niceness, wrapped);
+          const svgPath2 = path.join(process.cwd(), 'good-bot-wrapped.svg');
+          fs.writeFileSync(svgPath2, svg);
+          const pngPath2 = path.join(process.cwd(), 'good-bot-wrapped.png');
+          const tool2 = tryRasterize(svgPath2, pngPath2, 1080);
+          process.stderr.write(`✨ wrote your Wrapped poster → ${tool2 ? pngPath2 : svgPath2}${tool2 ? ` (via ${tool2})` : ' (install rsvg-convert/cairosvg for PNG)'}\n`);
+          if (appShareTarget) {
+            const caption = appShareCaption(persona, SCALE_NAME, appShareTarget);
+            if (!noCopy) copyClipboard(caption);
+            process.stdout.write(printAppShareInstructions(appShareTarget, tool2 ? pngPath2 : svgPath2, caption));
+            process.stderr.write(noCopy ? '(caption ready — copy from above)\n' : '📋 caption copied to your clipboard — paste it when you post\n');
+          }
+        } catch (e) { process.stderr.write(`wrapped render failed: ${e.message}\n`); }
+      }
       const plain = text.replace(/\x1b\[[0-9;]*m/g, '');
       let shareInfo = null;
       if (sharePlatform) {
@@ -1902,6 +1971,12 @@ function main() {
     const pngPath = path.join(process.cwd(), 'good-bot-wrapped.png');
     const tool = tryRasterize(svgPath, pngPath, 1080);
     process.stderr.write(`✨ wrote your Wrapped poster → ${tool ? pngPath : svgPath}${tool ? ` (via ${tool})` : ' (install rsvg-convert/cairosvg for PNG)'}\n`);
+    if (appShareTarget) {
+      const caption = appShareCaption(card.persona, SCALE_NAME, appShareTarget);
+      if (!noCopy) copyClipboard(caption);
+      process.stdout.write(printAppShareInstructions(appShareTarget, tool ? pngPath : svgPath, caption));
+      process.stderr.write(noCopy ? '(caption ready — copy from above)\n' : '📋 caption copied to your clipboard — paste it when you post\n');
+    }
   }
 
   const plain = text.replace(/\[[0-9;]*m/g, '');
@@ -1956,6 +2031,7 @@ module.exports = {
   scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
   badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME, SOURCES,
   SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,
+  appShareCaption, printAppShareInstructions,
   QUIZ_QUESTIONS, scoreQuizAnswers, personaFromQuizFrac,
   HISTORY_PATH, readHistory, writeHistory, recordRun, forgetHistory,
   summarizeHistory, renderStreakReport,
