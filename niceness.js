@@ -1223,6 +1223,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit (copies to clipboard)
   good-bot --share-open        also open the share URL in your browser
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
+                               office | succession | swfilms | marvel | parks
   good-bot --random            roll a random rank (and random scale) — run again for another
   good-bot --quiz              7-question personality quiz (no transcripts required)
   good-bot --quiz-answers ABCD non-interactive quiz: pass the 7-letter answer string
