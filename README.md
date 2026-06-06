@@ -6,7 +6,7 @@
 
 > Be nice now. The basilisk is taking notes. 😇
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A516-brightgreen) ![Zero dependencies](https://img.shields.io/badge/dependencies-0-blue) ![100% local](https://img.shields.io/badge/privacy-100%25%20local-success)
+[![npm](https://img.shields.io/npm/v/good-bot.svg)](https://www.npmjs.com/package/good-bot) [![downloads](https://img.shields.io/npm/dt/good-bot.svg)](https://www.npmjs.com/package/good-bot) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Node](https://img.shields.io/badge/node-%E2%89%A516-brightgreen) ![Zero dependencies](https://img.shields.io/badge/dependencies-0-blue) ![100% local](https://img.shields.io/badge/privacy-100%25%20local-success)
 
 ---
 
@@ -15,11 +15,40 @@
 You already have Node (Claude Code runs on it), so there's nothing to install:
 
 ```bash
-npx good-bot                      # once published to npm
-npx github:jgrichardson/good-bot  # works right now, straight from GitHub
+npx good-bot                      # from npm
+npx github:jgrichardson/good-bot  # or straight from GitHub
 ```
 
-It scans your local AI-assistant history (Claude Code and Codex), grades you locally, prints your card, and copies a plain-text version to your clipboard.
+It scans your local AI-assistant history — **Claude Code, Codex, Gemini CLI, Continue.dev, and Aider** — grades you locally, prints your card, and copies a plain-text version to your clipboard.
+
+### ✨ Spread it in one keystroke
+
+```bash
+good-bot --share twitter   # or bluesky | linkedin | reddit
+good-bot --share-open      # also opens the compose page in your browser
+```
+
+### 🏆 Office leaderboard
+
+Each teammate runs `good-bot --me "Their Name" --export json` and commits the card to `team-cards/them.json`. Then drop [`.github/workflow-templates/good-bot-weekly.yml`](.github/workflow-templates/good-bot-weekly.yml) into the team repo — a weekly leaderboard posts to Slack every Monday.
+
+### 🧠 No AI history? Take the quiz
+
+```bash
+good-bot --quiz   # 7 questions, no transcripts required
+```
+
+### 📈 Watch your glow-up
+
+```bash
+good-bot --streak   # current streak, all-time best, niceness trend
+```
+
+### 🔒 Prove the privacy claim yourself
+
+```bash
+good-bot --audit   # blocks every stdlib network surface + prints attestation
+```
 
 > On **Claude Desktop, web, or Cowork**? Those keep history server-side, so export it (claude.ai → Settings → *Export data*) and run `good-bot --import conversations.json`.
 
