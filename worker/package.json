@@ -1,0 +1,13 @@
+{
+  "name": "good-bot-barometer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Opt-in global niceness aggregator. Runs as a Cloudflare Worker. Stores only { scale, niceness-bucket, source } — no PII, ever.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.95.0"
+  }
+}
