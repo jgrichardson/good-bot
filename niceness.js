@@ -1141,6 +1141,47 @@ async function runQuizInteractive() {
   return answers.join('');
 }
 
+// ---- asciinema cast export ---------------------------------------------
+// Writes an asciinema-v2-format .cast file (JSON) of the rendered card.
+// Spec: https://docs.asciinema.org/manual/asciicast/v2/
+//
+// Header is one JSON object on line 1; each subsequent line is a JSON array
+// [time, "o", "data"]. Time is seconds since start, "o" is the output stream.
+// The cast plays back as a typewriter-effect rendering of the card so it
+// embeds nicely in READMEs / blog posts as a single GIF / web player.
+
+function buildAsciinemaCast(text, opts) {
+  opts = opts || {};
+  const lineDelay = typeof opts.lineDelay === 'number' ? opts.lineDelay : 0.08;
+  const initialPause = typeof opts.initialPause === 'number' ? opts.initialPause : 0.4;
+  const finalPause = typeof opts.finalPause === 'number' ? opts.finalPause : 1.5;
+  const cols = opts.cols || 64;
+  const rows = opts.rows || 28;
+  const ts = opts.timestamp || 1700000000;     // stable default for tests; main path overrides
+  const title = opts.title || 'good-bot card';
+  const lines = text.split('\n');
+  const events = [];
+  let t = initialPause;
+  for (const line of lines) {
+    events.push([t, 'o', line + '\r\n']);
+    t += lineDelay;
+  }
+  // Hold the final frame so the GIF doesn't snap-restart
+  events.push([t + finalPause, 'o', '']);
+  const header = JSON.stringify({
+    version: 2, width: cols, height: rows, timestamp: ts, title,
+    env: { TERM: 'xterm-256color', SHELL: '/bin/sh' },
+  });
+  const body = events.map(e => JSON.stringify(e)).join('\n');
+  return header + '\n' + body + '\n';
+}
+
+function writeCast(text, dest, opts) {
+  const cast = buildAsciinemaCast(text, opts);
+  fs.writeFileSync(dest, cast);
+  return dest;
+}
+
 // ---- webhook posting ---------------------------------------------------
 // Opt-in: post the (already-redacted) card text to a Slack-/Discord-compatible
 // webhook for the team channel leaderboard mechanic. The body is JSON
@@ -1441,6 +1482,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --compare a.json b.json  head-to-head: whose AI relationship wins?
   good-bot --me <name>         label the card (for export + compare display)
   good-bot --post-webhook URL  opt-in: POST the (redacted) card to a Slack/Discord webhook
+  good-bot --record            write good-bot-cast.json (asciinema v2 — embed anywhere)
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
@@ -1482,6 +1524,7 @@ function main() {
   const compareFiles = compareIdx >= 0 ? argv.slice(compareIdx + 1, compareIdx + 3) : null;
   const myName = argv.includes('--me') ? argVal('--me') : null;
   const webhookUrl = argv.includes('--post-webhook') ? argVal('--post-webhook') : null;
+  const wantRecord = argv.includes('--record');
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
@@ -1548,6 +1591,13 @@ function main() {
         process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
       }
       if (!noHistory) recordRun(persona, SCALE_NAME, scored.niceness);
+      if (wantRecord) {
+        const dest = path.join(process.cwd(), 'good-bot-cast.json');
+        try {
+          writeCast(text, dest, { title: `good-bot · ${persona.name}` });
+          process.stderr.write(`🎬 wrote ${dest} (play with: asciinema play ${path.basename(dest)})\n`);
+        } catch (e) { process.stderr.write(`cast export failed: ${e.message}\n`); }
+      }
       if (webhookUrl) {
         let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
         process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || webhookUrl}\n`);
@@ -1667,6 +1717,13 @@ function main() {
     process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
   }
   if (!noHistory) recordRun(card.persona, SCALE_NAME, analysis.niceness);
+  if (wantRecord) {
+    const dest = path.join(process.cwd(), 'good-bot-cast.json');
+    try {
+      writeCast(text, dest, { title: `good-bot · ${card.persona.name}` });
+      process.stderr.write(`🎬 wrote ${dest} (play with: asciinema play ${path.basename(dest)})\n`);
+    } catch (e) { process.stderr.write(`cast export failed: ${e.message}\n`); }
+  }
   if (webhookUrl) {
     let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
     process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || webhookUrl}\n`);
@@ -1690,4 +1747,5 @@ module.exports = {
   summarizeHistory, renderStreakReport,
   buildExportRecord, readCardJson, renderCompare,
   postWebhook,
+  buildAsciinemaCast, writeCast,
 };
