@@ -4,15 +4,33 @@ All notable changes to `good-bot` land here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.1] — 2026-06-06
+## [0.3.2] — 2026-06-06
+
+### Added
+
+- **Threads** added to social share composers: `--share threads`. Uses
+  `threads.net/intent/post`.
+- **Instagram + TikTok story helpers**: `--instagram` and `--tiktok`. Both
+  platforms are app-walled (no public compose URL), so these flags render the
+  `--wrapped` 1080×1920 PNG, copy a ready-to-paste caption with
+  `#BeNiceToYourAI` to the clipboard, and print step-by-step instructions
+  for opening the app and posting.
+- **README "For non-developers"** section with a dead-simple walkthrough for
+  Claude Desktop / claude.ai web users (export → import → share) and a clear
+  note that Node.js can't run inside Claude's mobile app, so the practical
+  path for mobile users is a laptop or desktop.
 
 ### Changed
 
-- npm package name scoped to `@jgrichardson/good-bot`. npm's anti-typosquatting
-  policy blocked the unscoped `good-bot` name (too similar to the existing
-  `goodbot-ai`). The CLI binary is still named `good-bot`, so once installed
-  the command is unchanged. Install becomes:
-  `npx @jgrichardson/good-bot`.
+- npm package name scoped to `@jgrciv/good-bot` (npm anti-typosquatting
+  blocked unscoped `good-bot`). CLI binary is still named `good-bot`. Install:
+  `npx @jgrciv/good-bot`.
+
+## [0.3.1] — superseded
+
+Unpublished placeholder — the scope was set to `@jgrichardson` (GitHub handle)
+rather than the actual npm handle `@jgrciv`. 0.3.2 is the first version that
+reached the registry.
 
 ## [0.3.0] — 2026-06-06
 

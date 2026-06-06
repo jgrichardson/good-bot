@@ -6,8 +6,8 @@
 
 > Be nice now. The basilisk is taking notes. 😇
 
-[![npm](https://img.shields.io/npm/v/@jgrichardson/good-bot.svg)](https://www.npmjs.com/package/@jgrichardson/good-bot)
-[![downloads](https://img.shields.io/npm/dt/@jgrichardson/good-bot.svg)](https://www.npmjs.com/package/@jgrichardson/good-bot)
+[![npm](https://img.shields.io/npm/v/@jgrciv/good-bot.svg)](https://www.npmjs.com/package/@jgrciv/good-bot)
+[![downloads](https://img.shields.io/npm/dt/@jgrciv/good-bot.svg)](https://www.npmjs.com/package/@jgrciv/good-bot)
 [![CI](https://github.com/jgrichardson/good-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/jgrichardson/good-bot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A516-brightgreen)
@@ -22,7 +22,7 @@
 You already have Node (your AI tools run on it), so there's nothing to install:
 
 ```bash
-npx @jgrichardson/good-bot        # from npm
+npx @jgrciv/good-bot        # from npm
 npx github:jgrichardson/good-bot  # or straight from GitHub
 ```
 
@@ -30,11 +30,71 @@ That's it. It scans your local AI-assistant history, grades you locally, prints 
 
 > On **Claude Desktop, web, or Cowork**? Those keep history server-side, so export it (claude.ai → Settings → *Export data*) and run with `--import conversations.json`.
 
+---
+
+## 👋 For non-developers (Claude Desktop / claude.ai web / mobile)
+
+Don't write code? You're in the right place. Three friendly paths:
+
+### Path 1 — The 60-second quiz (no transcripts, no export, no waiting)
+
+This is the easiest path. You don't need to export anything; you just answer 7 questions.
+
+1. Make sure you have **Node.js** installed (one-time, free):
+   - **Mac:** open Terminal → `brew install node` (if you don't have Homebrew: download from [nodejs.org](https://nodejs.org/))
+   - **Windows:** download the installer from [nodejs.org](https://nodejs.org/)
+2. Open your terminal (Mac: Cmd+Space → "Terminal"; Windows: search "PowerShell")
+3. Paste this:
+   ```bash
+   npx @jgrciv/good-bot --quiz
+   ```
+4. Press A / B / C / D for each of the 7 questions. Your card prints + lands on your clipboard.
+
+### Path 2 — Grade your real Claude.ai history (5 minutes)
+
+1. Go to [claude.ai](https://claude.ai) → settings → **Export data**. Wait for the email (usually under an hour).
+2. Unzip the file Anthropic emails you — you want `conversations.json`.
+3. Open your terminal in the folder where that file is and run:
+   ```bash
+   npx @jgrciv/good-bot --import conversations.json
+   ```
+
+### Path 3 — Mobile only? Borrow a laptop for 60 seconds.
+
+`good-bot` is a tiny Node.js program, and **the Claude mobile app doesn't run Node** — there's no terminal inside the app. The pragmatic workaround:
+
+- Borrow any laptop / desktop with a terminal (yours, a friend's, your kid's school laptop)
+- Run the 60-second quiz above (Path 1)
+- AirDrop / iMessage / email yourself the resulting `good-bot-wrapped.png` poster
+- Post from your phone
+
+We're tracking a hosted web-quiz version for fully mobile users — see [IMPROVEMENTS.md](IMPROVEMENTS.md) and [open an issue](https://github.com/jgrichardson/good-bot/issues) if you want it sooner.
+
+### Posting to Instagram, TikTok, or Threads
+
+Built right into the CLI:
+
+```bash
+npx @jgrciv/good-bot --quiz --instagram   # writes the poster, copies an IG caption
+npx @jgrciv/good-bot --quiz --tiktok      # same, with TikTok upload instructions
+npx @jgrciv/good-bot --quiz --share threads   # opens a Threads compose URL
+```
+
+What `--instagram` does (TikTok works the same way):
+1. Runs the quiz (or analyzes your transcripts — composable with anything)
+2. Renders a vertical 1080×1920 poster: `good-bot-wrapped.png`
+3. Copies a ready-to-paste caption with `#BeNiceToYourAI` to your clipboard
+4. Prints exactly what to tap in the IG / TikTok app to finish posting
+
+For Instagram Stories, Reels, TikTok, and Threads, the poster is already the right shape. Twitter / X / Bluesky / LinkedIn / Reddit use the one-click `--share <platform>` flow that opens a pre-filled compose URL.
+
+---
+
 ### Inside Claude Code
 
 | Path | How |
 |---|---|
-| No install | type `!npx @jgrichardson/good-bot` at the prompt |
+| No install | type `!npx @jgrciv/good-bot` at the prompt |
 | Slash command | install once, then type `/goodbot` any time |
 
 ```
@@ -122,11 +182,25 @@ good-bot --random             # roll a random rank AND random scale
 ### One-click social share
 
 ```bash
-good-bot --share twitter      # also: bluesky | linkedin | reddit (aliases: x, bsky)
+good-bot --share twitter      # also: bluesky | linkedin | reddit | threads (aliases: x, bsky)
 good-bot --share-open         # also open the compose page in your browser
 ```
 
-Builds a pre-filled compose URL with your persona, scale, and `#BeNiceToYourAI` hashtag, and copies the URL to your clipboard. Paste straight into Twitter / Bluesky / LinkedIn / Reddit.
+Builds a pre-filled compose URL with your persona, scale, and `#BeNiceToYourAI` hashtag, and copies the URL to your clipboard. Paste straight into Twitter / Bluesky / LinkedIn / Reddit / Threads.
+
+### Instagram & TikTok story helpers
+
+Both platforms are app-walled (no compose URL exists), so these flags do the next-best thing:
+
+```bash
+good-bot --instagram          # render the wrapped poster + stage an IG caption
+good-bot --tiktok             # same, with TikTok upload instructions
+```
+
+They each:
+1. Render the `--wrapped` 1080×1920 PNG (vertical, perfect for Stories / Reels / TikTok)
+2. Copy a ready-to-paste caption with `#BeNiceToYourAI` + the npx CTA to your clipboard
+3. Print a 3-step instruction list for opening the app and posting
 
 ### Wrapped poster
 

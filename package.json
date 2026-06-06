@@ -1,6 +1,6 @@
 {
-  "name": "@jgrichardson/good-bot",
-  "version": "0.3.1",
+  "name": "@jgrciv/good-bot",
+  "version": "0.3.2",
   "description": "How nice are you to your AI? A shareable report card (Mr. Rogers → Darth Vader) graded from your local Claude Code / Codex / Gemini CLI / Continue.dev / Aider history. 100% local by default.",
   "bin": {
     "good-bot": "niceness.js"
