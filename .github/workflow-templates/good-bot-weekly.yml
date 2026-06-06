@@ -1,0 +1,36 @@
+name: good-bot weekly leaderboard
+
+# Drop this in any team repo's .github/workflows/ to publish a weekly
+# leaderboard from a directory of good-bot-card.json exports committed by
+# each teammate to team-cards/<name>.json.
+#
+# Setup:
+#   1. Each teammate runs:    npx good-bot --me "Their Name" --export json
+#      and commits the resulting good-bot-card.json to team-cards/<them>.json
+#   2. Add a Slack/Discord incoming webhook URL as the repo secret
+#      SLACK_WEBHOOK (or any https webhook accepting {"text": "..."})
+#   3. Done. The leaderboard posts every Monday 9am UTC.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  leaderboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Render leaderboard
+        run: npx -y good-bot --leaderboard team-cards --no-copy
+      - name: Post to Slack/Discord
+        if: ${{ env.SLACK_WEBHOOK != '' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: npx -y good-bot --leaderboard team-cards --no-copy --post-webhook "$SLACK_WEBHOOK"

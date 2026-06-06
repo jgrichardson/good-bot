@@ -1141,6 +1141,64 @@ async function runQuizInteractive() {
   return answers.join('');
 }
 
+// ---- team leaderboard ---------------------------------------------------
+// Reads a directory of good-bot-card.json exports (one per teammate) and
+// builds a leaderboard text. Pairs with the .github workflow template so a
+// team can ship the office leaderboard via GitHub Actions on a cron.
+
+function loadTeamCards(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+  catch (e) { throw new Error(`cannot read ${dir}: ${e.message}`); }
+  const cards = [];
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith('.json')) continue;
+    const file = path.join(dir, e.name);
+    let card;
+    try { card = readCardJson(file); }
+    catch (err) { process.stderr.write(`skipping ${e.name}: ${err.message}\n`); continue; }
+    card.__file = e.name;
+    cards.push(card);
+  }
+  return cards;
+}
+
+function rankTeamCards(cards) {
+  // Sort descending by niceness; tie-break on pleases+thanks.
+  return cards.slice().sort((a, b) => {
+    if (b.niceness !== a.niceness) return b.niceness - a.niceness;
+    const aTies = (a.stats.pleases || 0) + (a.stats.thanks || 0);
+    const bTies = (b.stats.pleases || 0) + (b.stats.thanks || 0);
+    return bTies - aTies;
+  });
+}
+
+function renderLeaderboard(cards, opts) {
+  opts = opts || {};
+  const title = opts.title || 'TEAM LEADERBOARD · GOOD-BOT WEEKLY';
+  const ranked = rankTeamCards(cards);
+  const lines = [];
+  lines.push('');
+  lines.push(color(`  🏆  ${title}`, '1;33'));
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  if (!ranked.length) {
+    lines.push('  (no cards found — drop good-bot-card.json files into the team dir)');
+    lines.push('');
+    return lines.join('\n');
+  }
+  const medals = ['🥇', '🥈', '🥉'];
+  ranked.forEach((c, i) => {
+    const medal = medals[i] || `${String(i + 1).padStart(2)}.`;
+    const who = (c.displayName || c.persona.name).slice(0, 24);
+    const persona = `${c.persona.emoji || ''} ${c.persona.name}`.trim().slice(0, 24);
+    lines.push('  ' + medal + ' ' + who.padEnd(26) + persona.padEnd(28) + String(c.niceness).padStart(3) + '/100');
+  });
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  lines.push(`  ${ranked.length} teammate${ranked.length === 1 ? '' : 's'} · be nice to your AI · #BeNiceToYourAI`);
+  lines.push('');
+  return lines.join('\n');
+}
+
 // ---- asciinema cast export ---------------------------------------------
 // Writes an asciinema-v2-format .cast file (JSON) of the rendered card.
 // Spec: https://docs.asciinema.org/manual/asciicast/v2/
@@ -1483,6 +1541,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --me <name>         label the card (for export + compare display)
   good-bot --post-webhook URL  opt-in: POST the (redacted) card to a Slack/Discord webhook
   good-bot --record            write good-bot-cast.json (asciinema v2 — embed anywhere)
+  good-bot --leaderboard DIR   rank a directory of good-bot-card.json team exports
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
@@ -1525,6 +1584,7 @@ function main() {
   const myName = argv.includes('--me') ? argVal('--me') : null;
   const webhookUrl = argv.includes('--post-webhook') ? argVal('--post-webhook') : null;
   const wantRecord = argv.includes('--record');
+  const leaderboardDir = argv.includes('--leaderboard') ? argVal('--leaderboard') : null;
 
   // --random with no explicit scale also randomizes which ladder you get.
   const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
@@ -1556,6 +1616,27 @@ function main() {
     process.stdout.write(r.text + '\n');
     if (!noCopy) copyClipboard(r.text.replace(/\x1b\[[0-9;]*m/g, ''));
     process.stderr.write('🔒 100% local — both files read on this machine, nothing was sent anywhere.\n');
+    return;
+  }
+
+  // --leaderboard short-circuits the transcript walk too.
+  if (leaderboardDir) {
+    let cards;
+    try { cards = loadTeamCards(leaderboardDir); }
+    catch (e) { process.stderr.write(e.message + '\n'); process.exit(1); }
+    const text = renderLeaderboard(cards);
+    process.stdout.write(text + '\n');
+    const plainLb = text.replace(/\x1b\[[0-9;]*m/g, '');
+    if (!noCopy) copyClipboard(plainLb);
+    if (webhookUrl) {
+      let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
+      process.stderr.write(`\n⚠️  --post-webhook sends the leaderboard to ${host || webhookUrl}\n`);
+      postWebhook(webhookUrl, plainLb).then(r => {
+        if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
+        else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status)}\n`);
+      });
+    }
+    process.stderr.write('🔒 100% local — read ' + cards.length + ' card files; nothing was sent anywhere (unless --post-webhook).\n');
     return;
   }
 
@@ -1748,4 +1829,5 @@ module.exports = {
   buildExportRecord, readCardJson, renderCompare,
   postWebhook,
   buildAsciinemaCast, writeCast,
+  loadTeamCards, rankTeamCards, renderLeaderboard,
 };
