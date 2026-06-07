@@ -19,6 +19,16 @@
 
 ## ⚡ Quick start
 
+Three ways to play:
+
+### 🌐 In your browser — works on phone
+
+**→ https://jgrichardson.github.io/good-bot/**
+
+100% client-side. Take the quiz on iPhone / Android / desktop. Drag in an exported Claude or ChatGPT history. Download the 1080×1920 poster for Instagram, TikTok, Threads.
+
+### 📦 As a CLI from your terminal
+
 You already have Node (your AI tools run on it), so there's nothing to install:
 
 ```bash
@@ -26,19 +36,32 @@ npx @jgrciv/good-bot        # from npm
 npx github:jgrichardson/good-bot  # or straight from GitHub
 ```
 
-That's it. It scans your local AI-assistant history, grades you locally, prints your card, and copies a plain-text version to your clipboard.
+It scans your local AI-assistant history, grades you locally, prints your card, copies a plain-text version to your clipboard.
 
-> On **Claude Desktop, web, or Cowork**? Those keep history server-side, so export it (claude.ai → Settings → *Export data*) and run with `--import conversations.json`.
+### 🤖 As a Claude Code slash command
+
+```
+/plugin marketplace add jgrichardson/good-bot
+/plugin install good-bot@good-bot
+```
+
+Then type `/goodbot` any time inside Claude Code.
 
 ---
 
 ## 👋 For non-developers (Claude Desktop / claude.ai web / mobile)
 
-Don't write code? You're in the right place. Three friendly paths:
+Don't write code? You're in the right place. Three friendly paths, ranked by friction:
 
-### Path 1 — The 60-second quiz (no transcripts, no export, no waiting)
+### Path 1 — The hosted web app (zero install, works on phone)
 
-This is the easiest path. You don't need to export anything; you just answer 7 questions.
+Just open **https://jgrichardson.github.io/good-bot/** in any browser — iPhone Safari, Android Chrome, desktop — and tap "Take the quiz." 60 seconds, your card renders, tap "📸 Download poster" for a vertical PNG ready to upload to Instagram, TikTok, Threads, etc.
+
+The site is 100% client-side: your transcripts never leave your browser tab. The only optional network call is the opt-in 🌡️ "Add my score to the barometer" button, which sends only `{ niceness, scale, source }` (no PII, ever — see [PRIVACY.md](PRIVACY.md)).
+
+### Path 2 — The CLI quiz (60-second, terminal, no transcripts needed)
+
+If you have a terminal handy and want the full CLI features (`--svg`, `--badge`, `--wrapped`, `--record` for asciinema, etc.):
 
 1. Make sure you have **Node.js** installed (one-time, free):
    - **Mac:** open Terminal → `brew install node` (if you don't have Homebrew: download from [nodejs.org](https://nodejs.org/))
@@ -48,27 +71,23 @@ This is the easiest path. You don't need to export anything; you just answer 7 q
    ```bash
    npx @jgrciv/good-bot --quiz
    ```
-4. Press A / B / C / D for each of the 7 questions. Your card prints + lands on your clipboard.
+4. Press A / B / C / D for each of the 7 questions.
 
-### Path 2 — Grade your real Claude.ai history (5 minutes)
+### Path 3 — Grade your real history
 
-1. Go to [claude.ai](https://claude.ai) → settings → **Export data**. Wait for the email (usually under an hour).
-2. Unzip the file Anthropic emails you — you want `conversations.json`.
-3. Open your terminal in the folder where that file is and run:
-   ```bash
-   npx @jgrciv/good-bot --import conversations.json
-   ```
+The hosted web app accepts both Claude.ai and ChatGPT export files. The CLI accepts Claude.ai exports today (ChatGPT support coming in v0.3.3).
 
-### Path 3 — Mobile only? Borrow a laptop for 60 seconds.
+**Export from Claude.ai:**
 
-`good-bot` is a tiny Node.js program, and **the Claude mobile app doesn't run Node** — there's no terminal inside the app. The pragmatic workaround:
+> ⚠️ The Claude **mobile app** has no Export button. You have to use claude.ai in a browser — but a phone browser works fine, you do NOT need a laptop.
 
-- Borrow any laptop / desktop with a terminal (yours, a friend's, your kid's school laptop)
-- Run the 60-second quiz above (Path 1)
-- AirDrop / iMessage / email yourself the resulting `good-bot-wrapped.png` poster
-- Post from your phone
+1. Open [claude.ai](https://claude.ai) in a browser (Safari/Chrome on your phone is fine, just NOT the Claude app)
+2. Sign in → tap profile / Settings → Privacy → **Export data**
+3. Anthropic emails you a zip (usually under an hour)
+4. Unzip → find `conversations.json`
+5. Either: drop the file on the web app, OR run `npx @jgrciv/good-bot --import conversations.json` in a terminal
 
-We're tracking a hosted web-quiz version for fully mobile users — see [IMPROVEMENTS.md](IMPROVEMENTS.md) and [open an issue](https://github.com/jgrichardson/good-bot/issues) if you want it sooner.
+**Export from ChatGPT:** Same flow — chat.openai.com in a browser → Settings → Data Controls → Export data → email → unzip → drop on web app.
 
 ### Posting to Instagram, TikTok, or Threads
 
@@ -106,17 +125,18 @@ For Instagram Stories, Reels, TikTok, and Threads, the poster is already the rig
 
 ## 🧩 Supported AI tools
 
-`good-bot` understands the local histories of **5 AI coding assistants** out of the box:
+`good-bot` understands the local histories of **5 AI coding assistants** out of the box, plus three more via export+import:
 
-| Tool | Source path | Status |
-|---|---|---|
-| Claude Code | `~/.claude/history.jsonl` + `~/.claude/projects/` | ✅ first-class |
-| Codex CLI | `~/.codex/sessions/` | ✅ first-class |
-| Gemini CLI | `~/.gemini/sessions/` | ✅ first-class |
-| Continue.dev | `~/.continue/sessions/` | ✅ first-class |
-| Aider | `.aider.chat.history.md` (scanned across common roots) | ✅ first-class |
-| Cursor / Windsurf | SQLite-backed chat | ⚙️ export your chat history → `--import` |
-| Claude Desktop / web / Cowork | server-side | ⚙️ export → `--import conversations.json` |
+| Tool | Source path | CLI | Web (drag-drop) |
+|---|---|---|---|
+| Claude Code | `~/.claude/history.jsonl` + `~/.claude/projects/` | ✅ first-class | — |
+| Codex CLI | `~/.codex/sessions/` | ✅ first-class | — |
+| Gemini CLI | `~/.gemini/sessions/` | ✅ first-class | — |
+| Continue.dev | `~/.continue/sessions/` | ✅ first-class | — |
+| Aider | `.aider.chat.history.md` (scanned across common roots) | ✅ first-class | — |
+| Claude Desktop / claude.ai web / Cowork | server-side | ⚙️ export → `--import` | ✅ drag-drop |
+| ChatGPT desktop / web | server-side | ⚙️ planned in v0.3.3 | ✅ drag-drop |
+| Cursor / Windsurf | SQLite-backed chat | ⚙️ export → `--import` | ⚙️ planned |
 
 Pick one source explicitly with `--source claude | codex | gemini | continue | aider` or `all` (default).
 
@@ -298,6 +318,27 @@ Persists a tiny local file at `~/.good-bot/history.json` (cap 365 entries, ≲30
 
 ---
 
+## 🌐 The hosted web app
+
+Visit **https://jgrichardson.github.io/good-bot/** for a no-install browser version. Mobile-first design (works on iOS Safari + Android Chrome), 44KB JS bundle, zero dependencies, all 13 scales, all 5 share platforms, drag-and-drop for Claude/ChatGPT exports, downloadable 1080×1920 poster ready for IG / TikTok / Threads.
+
+### 🌡️ Global barometer (opt-in only)
+
+The result screen has a 🌡️ "Add my score to the barometer" button — a speedtest-style "you beat 73% of takers" mechanic. **It's opt-in and minimal**: only `{ niceness, scale, source }` is sent — no IP, no User-Agent, no cookies, no transcripts, nothing else. Backed by a Cloudflare Worker (source: [`worker/index.js`](worker/index.js)) writing to Workers KV. Honors `DNT: 1` and `Sec-GPC: 1` browser signals. Never sold, never shared, never used as training data. Full disclosure: [PRIVACY.md](PRIVACY.md).
+
+The same engine as the CLI — `web/src/engine.js` re-exports the scales and scoring from the root project, so adding a scale in `scales.js` reaches both surfaces.
+
+### Self-host the website
+
+Anyone can fork this repo and deploy the web app:
+- **GitHub Pages** (current setup) — `.github/workflows/web-deploy.yml` auto-deploys on every push to main touching `/web` or `scales.js`
+- **Cloudflare Pages** — Build command: `cd web && npm install && npm run build`, Build output: `web/dist`
+- **Vercel / Netlify** — same build settings
+
+The barometer worker is independently deployable via `.github/workflows/worker-deploy.yml` once you add a `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secret. The KV namespace is auto-bootstrapped on first deploy.
+
+---
+
 ## 🔒 Privacy
 
 Your transcripts are real work — customer names, secrets, file paths. So:
@@ -391,23 +432,41 @@ good-bot --help                     this list
 
 ## 🤝 Contributing
 
-Contributions welcome and easy! The whole codebase is one ~3,400-line Node project with **zero runtime dependencies**.
+Contributions welcome and easy! The CLI is one ~4,000-line Node project with **zero runtime dependencies**. The web app is a 44KB esbuild bundle sharing the same engine source.
 
 **Great first contributions:**
-- 🎚️ **A new ranking scale.** Add a ladder to `scales.js`, give it a `SCALE_META` entry, optional demo content. Most ladders are 8–10 personas; any length works.
+- 🎚️ **A new ranking scale.** Add a ladder to `scales.js`, give it a `SCALE_META` entry, optional demo content. Most ladders are 8–10 personas; any length works. Adding a scale automatically reaches both the CLI and the web app.
 - 🧩 **A new ingestion source.** Cursor (SQLite), Windsurf, Cline, Roo Code, OpenCode all welcome.
 - 🌐 **More redaction patterns** in `REDACTIONS` for PII we don't yet catch.
 - 🐍 **A Python port** sharing the same ladder and redaction rules.
+- 🎨 **Wrapped poster theme variations** in `wrappedSvg()` for shareable variety.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules (zero deps, privacy first, screenshot-friendly card), [IMPROVEMENTS.md](IMPROVEMENTS.md) for the v0.3 → v0.4 roadmap, and [CHANGELOG.md](CHANGELOG.md) for what's already shipped.
 
 ```bash
 git clone https://github.com/jgrichardson/good-bot.git
 cd good-bot
-node niceness.js --demo            # preview every rank
-node niceness.js --quiz-answers AAAAAAA --no-copy   # smoke test
-npm test                           # 126 cases on Node 18 / 20 / 22
+node niceness.js --demo                           # preview every rank
+node niceness.js --quiz-answers AAAAAAA --no-copy # smoke test
+npm test                                          # 126 cases on Node 18 / 20 / 22
+
+# Web app
+cd web && npm install && npm run dev              # http://localhost:5173/
+
+# Cloudflare Worker (barometer)
+cd worker && npx wrangler dev                     # local dev server
 ```
+
+### Project layout
+
+| Directory | What's in it |
+|---|---|
+| `/` | The CLI engine — `niceness.js`, `scales.js`, `demo-data.js`, `test/` |
+| `/commands/` | Claude Code slash command definitions |
+| `/.claude-plugin/` | Claude Code plugin manifest |
+| `/web/` | Browser-hosted quiz + import + share + poster (deploys to GH Pages) |
+| `/worker/` | Cloudflare Worker for the opt-in global barometer |
+| `/.github/workflows/` | CI (Node 18/20/22 matrix), npm publish, web deploy, worker deploy |
 
 ---
 
@@ -419,4 +478,11 @@ Run it, screenshot your card, post it, and tag a teammate with **#BeNiceToYourAI
 
 ## License
 
-[MIT](LICENSE) © Greg Richardson · See [PRIVACY.md](PRIVACY.md) for the privacy story · See [CHANGELOG.md](CHANGELOG.md) for what's changed
+[MIT](LICENSE) © Greg Richardson · See [PRIVACY.md](PRIVACY.md) for the privacy story · See [CHANGELOG.md](CHANGELOG.md) for what's changed · See [IMPROVEMENTS.md](IMPROVEMENTS.md) for what's next
+
+### Links
+
+- 🌐 Live: **https://jgrichardson.github.io/good-bot/**
+- 📦 npm: **https://www.npmjs.com/package/@jgrciv/good-bot**
+- ⭐ GitHub: **https://github.com/jgrichardson/good-bot**
+- 🌡️ Barometer worker: **https://good-bot-barometer.jgrciv.workers.dev/api/health**
