@@ -383,10 +383,33 @@ const NEGATORS = "no|not|never|don'?t|doesn'?t|did'?nt|didn'?t|isn'?t|wasn'?t|ar
 const NEG_RE = new RegExp(`\\b(?:${NEGATORS})\\b(?:\\s+\\w+){0,2}\\s+(?:${[...STRONG_NICE, ...SOFT_NICE].map(esc).join('|')})\\b`, 'g');
 function negatedPositives(low) { return (low.match(NEG_RE) || []).length; }
 
+// Whole-message ALL-CAPS detection: >70% of letters uppercase, ≥5 letters.
+// Returns the binary signal that gets surfaced in the stats line on the card.
 function shouty(text) {
   const letters = text.replace(/[^a-zA-Z]/g, '');
   if (letters.length < 5) return false;
   return text.replace(/[^A-Z]/g, '').length / letters.length > 0.7;
+}
+
+// Counts standalone ALL-CAPS words (≥3 letters) in a message. Catches the
+// 'fix this NOW' or 'WHY are you doing it like THAT' pattern that the
+// whole-message threshold misses. Capped to avoid runaway scores on long
+// messages that happen to mix some normal-case and all-caps words.
+function shoutyWordCount(text) {
+  if (!text) return 0;
+  const matches = String(text).match(/\b[A-Z]{3,}\b/g) || [];
+  // Exclude common short technical acronyms that aren't shouting (URL, API,
+  // JSON, SQL, CSS, HTML, XML, HTTP, HTTPS, REST, JWT, AWS, GCP, IDE, CLI,
+  // SDK, NPM, USB, GPU, CPU, RAM, RAID, UUID, ULID).
+  const ACRONYMS = new Set([
+    'URL','API','JSON','SQL','CSS','HTML','XML','HTTP','HTTPS','REST','JWT',
+    'AWS','GCP','GCE','IDE','CLI','SDK','NPM','USB','GPU','CPU','RAM','RAID',
+    'UUID','ULID','TLS','SSH','DNS','PDF','PNG','JPG','SVG','CSV','YAML','TOML',
+    'OK','LGTM','TLDR','TLDR;','IMO','IMHO','FYI','BTW','TBH','TIL','PR','CI','CD',
+    'OS','IP','MAC','UI','UX','QA','AI','ML','GPT','LLM','RAG','MVP',
+  ]);
+  const real = matches.filter(w => !ACRONYMS.has(w));
+  return Math.min(real.length, 5);
 }
 function scoreMessage(text) {
   const low = text.toLowerCase();
@@ -395,7 +418,12 @@ function scoreMessage(text) {
   for (const e of NICE_EMOJI) nice += text.split(e).length - 1;
   nice = Math.max(0, nice - negated * 2);                 // a negated "thanks" isn't gratitude
   let mean = countHits(low, STRONG_MEAN) * 3 + countHits(low, SOFT_MEAN) + negated;
-  if (shouty(text)) mean += 1;
+  // CAPS detection: stronger weight + finer granularity than the old +1.
+  // Whole-message yelling adds +3 (was +1). Each standalone ALL-CAPS word
+  // (excluding tech acronyms) adds +1, capped at 5.
+  const fullShout = shouty(text);
+  const shoutWords = shoutyWordCount(text);
+  mean += (fullShout ? 3 : 0) + shoutWords;
   mean += (text.match(/!{3,}|\?!/g) || []).length;
   const frust = countHits(low, FRUSTRATION) + (low.match(/\?{2,}/g) || []).length;
   let enth = (text.includes('!') ? 1 : 0) + countHits(low, ENTHUSIASM);
@@ -403,7 +431,7 @@ function scoreMessage(text) {
   const pres = countHits(low, PRESSURE);
   // mood: warmth minus harshness, with frustration as a softer negative.
   const mood = nice - mean - 0.6 * frust;
-  return { nice, mean, frust, enth, pres, mood };
+  return { nice, mean, frust, enth, pres, mood, fullShout, shoutWords };
 }
 
 // Score one message into a rich, self-contained record so any later
@@ -422,7 +450,8 @@ function scoreRecord(it) {
     thanks: (low.match(/\b(?:thank|thanks|thx|ty)\b/g) || []).length,
     fbomb: (low.match(/\bfuck\w*\b/g) || []).length,
     apolog: (low.match(/\b(?:sorry|apolog|my bad)\w*\b/g) || []).length,
-    shout: shouty(text) ? 1 : 0,
+    shout: s.fullShout ? 1 : 0,
+    shoutWords: s.shoutWords,
     exclaim: text.includes('!') ? 1 : 0,
   };
 }
@@ -430,10 +459,10 @@ function scoreRecord(it) {
 // pickPersona + raw tone axes. No re-scoring.
 function aggregate(list) {
   const n = Math.max(list.length, 1);
-  let nice = 0, mean = 0, thanks = 0, pleases = 0, apolog = 0, fbomb = 0, shout = 0, exclaim = 0, chars = 0, frust = 0, enth = 0, pres = 0, pos = 0, neg = 0;
+  let nice = 0, mean = 0, thanks = 0, pleases = 0, apolog = 0, fbomb = 0, shout = 0, shoutWords = 0, exclaim = 0, chars = 0, frust = 0, enth = 0, pres = 0, pos = 0, neg = 0;
   for (const s of list) {
     nice += s.nice; mean += s.mean; thanks += s.thanks; pleases += s.pleases; apolog += s.apolog;
-    fbomb += s.fbomb; shout += s.shout; exclaim += s.exclaim; chars += s.len; frust += s.frust; enth += s.enth; pres += s.pres;
+    fbomb += s.fbomb; shout += s.shout; shoutWords += (s.shoutWords || 0); exclaim += s.exclaim; chars += s.len; frust += s.frust; enth += s.enth; pres += s.pres;
     if (s.mood > 0) pos += 1; else if (s.mood < 0) neg += 1;
   }
   const niceness = clamp(50 + ((pos - 1.7 * neg) / n) * 140, 0, 100);
@@ -457,6 +486,7 @@ function analyze(items) {
       thanks: scored.reduce((a, s) => a + s.thanks, 0),
       fbombs: scored.reduce((a, s) => a + s.fbomb, 0),
       shouts: scored.reduce((a, s) => a + s.shout, 0),
+      shoutWords: scored.reduce((a, s) => a + (s.shoutWords || 0), 0),
     },
   };
 }
@@ -745,7 +775,11 @@ function renderCard(persona, verdict, assessment, exhibits, stats, span) {
   }
   out.push('');
   out.push(color('   ────────────────────────────────────────────────', '90'));
-  out.push(color(`   📊 ${stats.messages} messages · ${stats.pleases} pleases · ${stats.thanks} thank-yous · ${stats.fbombs} f-bombs`, '96'));
+  // Surface ALL-CAPS shouting as a first-class stat alongside f-bombs.
+  // We display the message-level count (how many messages were whole-message
+  // shouts) — that's the most readable single number.
+  const shoutsTxt = (stats.shouts || 0) > 0 ? ` · ${stats.shouts} ALL-CAPS` : '';
+  out.push(color(`   📊 ${stats.messages} messages · ${stats.pleases} pleases · ${stats.thanks} thank-yous · ${stats.fbombs} f-bombs${shoutsTxt}`, '96'));
   if (span) out.push(color(`   🗓  ${span}`, '90'));
   out.push('');
   out.push(color(`   📣 How do YOU treat your AI? → github.com/${REPO}`, '1;95'));
@@ -2027,7 +2061,7 @@ if (require.main === module) main();
 
 module.exports = {
   sanitize, extractTexts, extractCodex, extractGemini, extractContinue, extractAiderMarkdown,
-  importExport, scoreMessage, shouty, analyze,
+  importExport, scoreMessage, shouty, shoutyWordCount, analyze,
   scaleIndex, personaFor, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline, renderSvg,
   badgeMarkdown, computeWrapped, wrappedSvg, SCALES, SCALE, SCALE_NAME, SOURCES,
   SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,

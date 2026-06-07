@@ -220,13 +220,32 @@ function setupDropzone() {
 function quickScoreItems(items) {
   const NICE = /\b(please|thank|thanks|appreciate|sorry|kudos|cheers)\b/gi;
   const MEAN = /\b(fuck|shit|bullshit|stupid|idiot|useless|garbage|moron)\b/gi;
-  let nice = 0, mean = 0;
+  // Standalone ALL-CAPS words (≥3 letters), minus common tech acronyms.
+  const CAPS_WORD = /\b[A-Z]{3,}\b/g;
+  const ACRONYMS = new Set([
+    'URL','API','JSON','SQL','CSS','HTML','XML','HTTP','HTTPS','REST','JWT',
+    'AWS','GCP','GCE','IDE','CLI','SDK','NPM','USB','GPU','CPU','RAM','RAID',
+    'UUID','ULID','TLS','SSH','DNS','PDF','PNG','JPG','SVG','CSV','YAML','TOML',
+    'OK','LGTM','TLDR','IMO','IMHO','FYI','BTW','TBH','TIL','PR','CI','CD',
+    'OS','IP','MAC','UI','UX','QA','AI','ML','GPT','LLM','RAG','MVP',
+  ]);
+  let nice = 0, mean = 0, capsWords = 0, shoutyMessages = 0;
   for (const it of items) {
     nice += (it.text.match(NICE) || []).length;
     mean += (it.text.match(MEAN) || []).length;
+    // Per-word CAPS contribution (cap per-message at 5)
+    const caps = (it.text.match(CAPS_WORD) || []).filter((w) => !ACRONYMS.has(w));
+    capsWords += Math.min(caps.length, 5);
+    // Whole-message yelling: >70% uppercase letters with ≥5 letters
+    const letters = it.text.replace(/[^a-zA-Z]/g, '');
+    if (letters.length >= 5 && it.text.replace(/[^A-Z]/g, '').length / letters.length > 0.7) {
+      shoutyMessages += 1;
+    }
   }
   const n = items.length || 1;
-  const frac = Math.max(0, Math.min(1, 0.5 - (nice - mean * 1.5) / (n * 0.4)));
+  // CAPS words count as 0.5× a mean keyword; whole-message shouts count as 1×.
+  const meanWeighted = mean * 1.5 + capsWords * 0.5 + shoutyMessages;
+  const frac = Math.max(0, Math.min(1, 0.5 - (nice - meanWeighted) / (n * 0.4)));
   return { frac, niceness: Math.round((1 - frac) * 100) };
 }
 
