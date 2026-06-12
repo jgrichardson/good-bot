@@ -1,0 +1,77 @@
+{
+  "name": "office-archetypes",
+  "title": "WHICH OFFICE ARCHETYPE ARE YOU? · CUBICLE CARD",
+  "ends": [" worst", "  best"],
+  "ladder": [
+    {
+      "name": "The Snack Fairy",
+      "emoji": "🧁",
+      "face": "happy",
+      "tag": "There are donuts in the kitchen. Anonymous ones.",
+      "blurb": "Pure workplace sunshine. You leave treats by the build server, you thank the bot by name, and your code reviews come with sprinkles. Morale is your love language."
+    },
+    {
+      "name": "The Plant Parent",
+      "emoji": "🪴",
+      "face": "happy",
+      "tag": "Have you had water today? The ficus has.",
+      "blurb": "Gentle, nurturing, quietly attentive. You check in on the bot the way you check in on the office ficus — regularly, kindly, and with real concern for its growth."
+    },
+    {
+      "name": "The Onboarding Buddy",
+      "emoji": "🧭",
+      "face": "happy",
+      "tag": "No such thing as a dumb question.",
+      "blurb": "Endlessly patient with anyone finding their feet — humans and language models alike. Clear context, kind corrections, and a standing offer to pair on it."
+    },
+    {
+      "name": "The Whiteboard Optimist",
+      "emoji": "🖍️",
+      "face": "happy",
+      "tag": "Love it. Let's diagram it.",
+      "blurb": "Every idea deserves a marker and a maybe. The bot's weirdest suggestion gets a fair hearing and a box with arrows. Enthusiasm: renewable."
+    },
+    {
+      "name": "The Calendar Diplomat",
+      "emoji": "📅",
+      "face": "neutral",
+      "tag": "Finding a slot that works for everyone.",
+      "blurb": "Professional, measured, scrupulously even-handed. No warmth, no friction — just well-run requests with an agenda attached. The bot always knows what's expected."
+    },
+    {
+      "name": "The Process Stickler",
+      "emoji": "📋",
+      "face": "neutral",
+      "tag": "Did you file a ticket for that?",
+      "blurb": "Everything by the book, including the book. Requests arrive numbered, scoped, and signed in triplicate. Fair to the bot — once the paperwork clears."
+    },
+    {
+      "name": "The Deadline Hawk",
+      "emoji": "⏰",
+      "face": "neutral",
+      "tag": "Friendly reminder: EOD means EOD.",
+      "blurb": "Courteous on the surface, ticking underneath. Every message carries a timestamp and an implication. The bot ships fast and double-checks the timezone."
+    },
+    {
+      "name": "The Red-Pen Reviewer",
+      "emoji": "🖊️",
+      "face": "mean",
+      "tag": "Seventeen comments. On your one-liner.",
+      "blurb": "Nothing escapes the pen. Praise is theoretical; margins are full. The bot's diff comes back bleeding and somehow it's still 'a good start.'"
+    },
+    {
+      "name": "The Meeting Landmine",
+      "emoji": "💥",
+      "face": "mean",
+      "tag": "Quick question that detonates the agenda.",
+      "blurb": "Calm for whole minutes, then boom — a 'small thing' that levels the plan. The bot has learned to flinch at the word 'actually.'"
+    },
+    {
+      "name": "The Reply-All Warlord",
+      "emoji": "📣",
+      "face": "mean",
+      "tag": "ESCALATING. CC: everyone.",
+      "blurb": "Every grievance gets a distribution list. ALL CAPS, red exclamation mark, leadership in the CC line. The bot has muted the thread and is considering a transfer."
+    }
+  ]
+}

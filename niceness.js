@@ -52,6 +52,123 @@ let SCALE = SCALES[SCALE_NAME] || SCALES.people;
 let META = SCALE_META[SCALE_NAME] || SCALE_META.people;
 function useScale(name) { SCALE_NAME = name; SCALE = SCALES[name] || SCALES.people; META = SCALE_META[name] || SCALE_META.people; }
 
+// ---- persona packs (--scale-pack <file.json>) -----------------------------
+// A pack is one JSON file shaped like a scales.js ladder: a `name` slug,
+// optional `title` + `ends` card chrome, and a `ladder` of personas ordered
+// nicest → meanest ({ name, emoji, face, tag, blurb }). Ranking thresholds
+// are implicit, exactly like the built-in scales: the engine maps your
+// niceness onto the ladder by fraction, so a pack can be any length ≥ 3.
+// Two free packs ship in packs/ — the format lives in packs/README.md.
+
+const PACK_FACES = ['happy', 'neutral', 'mean'];
+const PACK_MIN_RUNGS = 3;
+const PACK_MAX_RUNGS = 40;
+
+// Kind, specific validation: returns an array of human-readable problems
+// (empty = valid). Every message names the exact field so a hand-written
+// pack can be fixed without reading this source.
+function validateScalePack(pack) {
+  const errors = [];
+  if (!pack || typeof pack !== 'object' || Array.isArray(pack)) {
+    return ['the pack must be a JSON object like { "name": …, "ladder": [...] }'];
+  }
+  if (typeof pack.name !== 'string' || !pack.name.trim()) {
+    errors.push('"name" is required — a short slug like "cosmic-entities"');
+  } else if (!/^[a-z0-9][a-z0-9-]*$/.test(pack.name)) {
+    errors.push(`"name" must be a lowercase slug (a-z, 0-9, dashes) — got "${pack.name}"`);
+  }
+  if (pack.title != null && typeof pack.title !== 'string') {
+    errors.push('"title" must be a string (the banner across the top of the card)');
+  }
+  if (pack.ends != null && !(Array.isArray(pack.ends) && pack.ends.length === 2 && pack.ends.every(e => typeof e === 'string'))) {
+    errors.push('"ends" must be an array of exactly 2 strings: the meanest-end and nicest-end bar labels');
+  }
+  if (!Array.isArray(pack.ladder)) {
+    errors.push('"ladder" is required — an array of personas ordered nicest → meanest');
+  } else if (pack.ladder.length < PACK_MIN_RUNGS) {
+    errors.push(`"ladder" needs at least ${PACK_MIN_RUNGS} personas (got ${pack.ladder.length}) — 8-10 reads best`);
+  } else if (pack.ladder.length > PACK_MAX_RUNGS) {
+    errors.push(`"ladder" can hold at most ${PACK_MAX_RUNGS} personas (got ${pack.ladder.length})`);
+  } else {
+    pack.ladder.forEach((p, i) => {
+      const where = `ladder[${i}]` + (p && typeof p.name === 'string' && p.name ? ` ("${p.name}")` : '');
+      if (!p || typeof p !== 'object' || Array.isArray(p)) {
+        errors.push(`${where} must be an object like { "name": …, "emoji": …, "tag": … }`);
+        return;
+      }
+      if (typeof p.name !== 'string' || !p.name.trim()) errors.push(`${where}: "name" is required (the persona's display name)`);
+      else if (p.name.length > 40) errors.push(`${where}: "name" is too long (${p.name.length} chars — max 40, it has to fit the card)`);
+      if (p.emoji != null && typeof p.emoji !== 'string') errors.push(`${where}: "emoji" must be a string`);
+      if (p.face != null && !PACK_FACES.includes(p.face)) errors.push(`${where}: "face" must be one of happy | neutral | mean (got ${JSON.stringify(p.face)})`);
+      if (p.tag != null && typeof p.tag !== 'string') errors.push(`${where}: "tag" must be a string (the one-line quip under the name)`);
+      if (p.blurb != null && typeof p.blurb !== 'string') errors.push(`${where}: "blurb" must be a string (the 2-3 sentence description)`);
+    });
+  }
+  return errors;
+}
+
+// Fill the optional fields so the rest of the engine sees exactly the shape
+// scales.js exports. A missing face falls back by ladder position — the top
+// of the ladder smiles, the bottom scowls — mirroring the built-in ladders.
+function normalizeScalePack(pack) {
+  const n = pack.ladder.length;
+  const ladder = pack.ladder.map((p, i) => {
+    const f = n <= 1 ? 0 : i / (n - 1);
+    return {
+      name: p.name.trim(),
+      emoji: typeof p.emoji === 'string' && p.emoji ? p.emoji : '🤖',
+      face: PACK_FACES.includes(p.face) ? p.face : (f < 0.4 ? 'happy' : f < 0.7 ? 'neutral' : 'mean'),
+      tag: typeof p.tag === 'string' ? p.tag : '',
+      blurb: typeof p.blurb === 'string' && p.blurb ? p.blurb : (p.tag || 'A custom persona from a community pack.'),
+    };
+  });
+  return {
+    name: pack.name,
+    ladder,
+    meta: {
+      title: typeof pack.title === 'string' && pack.title ? pack.title : 'HOW NICE ARE YOU TO YOUR AI? · CUSTOM CARD',
+      ends: Array.isArray(pack.ends) && pack.ends.length === 2 ? pack.ends : ['meanest', ' nicest'],
+    },
+  };
+}
+
+// Read + validate + normalize a pack file. Throws a kind, multi-line error
+// naming every problem and pointing at packs/README.md — never a stack trace.
+function loadScalePack(file) {
+  let raw;
+  try { raw = fs.readFileSync(file, 'utf8'); }
+  catch (e) {
+    throw new Error(`could not read scale pack ${file}: ${e.message}\n` +
+      '(two free packs ship in packs/ — try --scale-pack packs/cosmic-entities.json)');
+  }
+  let pack;
+  try { pack = JSON.parse(raw); }
+  catch (e) { throw new Error(`scale pack ${file} is not valid JSON: ${e.message}\n(see packs/README.md for the format)`); }
+  const errors = validateScalePack(pack);
+  if (errors.length) {
+    throw new Error(`scale pack ${file} has ${errors.length === 1 ? 'a problem' : errors.length + ' problems'}:\n` +
+      errors.map(e => `  • ${e}`).join('\n') +
+      '\nSee packs/README.md for the format — packs/*.json are working examples.');
+  }
+  return normalizeScalePack(pack);
+}
+
+function useScalePack(p) { SCALE_NAME = p.name; SCALE = p.ladder; META = p.meta; }
+
+// Applied at startup (CLI runs only, never on require) so every mode — the
+// card, --demo, --json, --share, --roast — sees the custom ladder exactly
+// like a built-in scale.
+const SCALE_PACK_FILE = argVal('--scale-pack');
+if (require.main === module && process.argv.slice(2).some(a => a === '--scale-pack' || a.startsWith('--scale-pack='))) {
+  if (!SCALE_PACK_FILE || SCALE_PACK_FILE.startsWith('--')) {
+    process.stderr.write('--scale-pack needs a JSON pack file.\n' +
+      'Try: good-bot --scale-pack packs/cosmic-entities.json --demo\n');
+    process.exit(1);
+  }
+  try { useScalePack(loadScalePack(SCALE_PACK_FILE)); }
+  catch (e) { process.stderr.write(e.message + '\n'); process.exit(1); }
+}
+
 function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
 // --- redaction (defense-in-depth; the safe default stays fully local) -----
@@ -2148,6 +2265,73 @@ function renderAuditReport(calls) {
   return lines.join('\n');
 }
 
+// ---- privacy self-audit manifest (--audit / --verify-privacy) ------------
+// The human-readable half of the audit, printed BEFORE the run: exactly what
+// the tool reads (and which of those paths exist on this machine), what it
+// sends over the network (0 bytes, always, unless YOU opt in), how quoted
+// snippets are redacted, and how to verify every claim independently — the
+// grep one-liner, the CI guard suite (test/no-network.test.js), and
+// PRIVACY.md. renderAuditReport (above) is the machine-verified half that
+// prints after the run.
+
+function privacyReadTargets() {
+  const home = os.homedir();
+  const t = (label, rel, note) => ({
+    label,
+    display: '~/' + rel,
+    exists: fs.existsSync(path.join(home, rel)),
+    note: note || null,
+  });
+  return [
+    t('Claude Code', '.claude/history.jsonl'),
+    t('Claude Code', '.claude/projects'),
+    t('Codex CLI', '.codex/sessions'),
+    t('Gemini CLI', '.gemini/tmp', '(*/logs.json inside)'),
+    t('Gemini CLI', '.gemini/sessions'),
+    t('Continue.dev', '.continue/sessions'),
+    t('Aider', '.aider.chat.history.md', '(also ./ + project roots)'),
+    t('good-bot state', '.good-bot/history.json', '(your own past scores)'),
+    t('good-bot state', '.good-bot/statusline.json', '(6h score cache)'),
+    t('good-bot state', '.good-bot/state.json', '(run counter + ⭐ nudge flag)'),
+  ];
+}
+
+// The shell one-liner we tell users to run. Every hit it produces is either
+// the --webhook handler or the --audit patcher — by design, and enforced in
+// CI by test/no-network.test.js.
+const PRIVACY_GREP_ONELINER =
+  'grep -nE "require\\([\'\\"](node:)?(https?|net|tls|dgram|dns)" *.js';
+
+function renderPrivacyManifest() {
+  const lines = [''];
+  for (const l of banner('PRIVACY SELF-AUDIT · WHAT THIS RUN TOUCHES')) lines.push(l);
+  lines.push('');
+  lines.push(color('   📂 Reads — only ever these paths, all local:', '1;36'));
+  for (const t of privacyReadTargets()) {
+    const mark = t.exists ? color('✓', '32') : color('—', '90');
+    lines.push(`      ${mark} ${pad(t.display, 30)}${color(t.label + (t.note ? ' ' + t.note : ''), '90')}`);
+  }
+  lines.push(color('      opt-in extras: --import <file> · git log (--vs / --lab) · ~/.zsh_history', '90'));
+  lines.push(color('      + ~/.bash_history (--shell only). Nothing else on your disk is opened.', '90'));
+  lines.push('');
+  lines.push(color('   📡 Sends over the network:', '1;36'));
+  lines.push('      0 bytes — always, unless YOU pass --webhook (your redacted card → your');
+  lines.push('      own webhook) or --ai (a redacted sample → your own local `claude` CLI).');
+  lines.push('');
+  lines.push(color('   ✂️  Redaction applied to every quoted snippet:', '1;36'));
+  lines.push('      emails → [email] · URLs → [link] · file paths → [path] · API keys → [secret]');
+  lines.push('      JWTs → [token] · long hashes → [hash] · IPs → [ip] · phone numbers → [phone]');
+  lines.push('      dollar amounts → [amount] · long digit runs → [number]');
+  lines.push('');
+  lines.push(color('   🔍 Verify it yourself:', '1;36'));
+  lines.push('      ' + PRIVACY_GREP_ONELINER);
+  lines.push(color('      → every hit is the --webhook handler or the --audit patcher, by design', '90'));
+  lines.push('      · test/no-network.test.js — CI fails loudly on any new network require');
+  lines.push('      · PRIVACY.md — the full, binding disclosure');
+  lines.push('');
+  return lines.join('\n') + '\n';
+}
+
 // ---- team leaderboard ---------------------------------------------------
 // Reads a directory of good-bot-card.json exports (one per teammate) and
 // builds a leaderboard text. Pairs with the .github workflow template so a
@@ -2669,6 +2853,62 @@ function renderStreakReport(hist) {
   return lines.join('\n');
 }
 
+// ---- one-time star nudge (--no-nudge) -------------------------------------
+// After the 3rd lifetime real run, print ONE line — once, ever — asking for a
+// GitHub star. The counter + shown flag live in ~/.good-bot/state.json
+// (aggregate numbers only, like every other state file here). Suppressed by
+// --no-nudge, --json, --mcp, --statusline, --webhook, and any non-TTY stdout
+// so it can never contaminate piped or machine output; a suppressed run still
+// counts, and the shown flag is only set when the line actually prints.
+
+const STATE_PATH = path.join(os.homedir(), '.good-bot', 'state.json');
+const NUDGE_AFTER_RUNS = 3;
+const NUDGE_LINE = "⭐ Enjoying this? Star github.com/jgrichardson/good-bot — and there's a newsletter coming (link in README).";
+
+function readState(file) {
+  try {
+    const s = JSON.parse(fs.readFileSync(file || STATE_PATH, 'utf8'));
+    return s && typeof s === 'object' && !Array.isArray(s) ? s : { schemaVersion: 1 };
+  } catch (_) { return { schemaVersion: 1 }; }
+}
+
+function writeState(state, file) {
+  file = file || STATE_PATH;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(Object.assign({ schemaVersion: 1 }, state)));
+    return true;
+  } catch (_) { return false; }
+}
+
+// Pure state machine (exported for tests): counts this real run and decides
+// whether to show. The 3rd run shows; the 4th doesn't (shown persists); a
+// suppressed 3rd run defers to the next unsuppressed one instead of silently
+// burning the one nudge we get.
+function nudgeDecision(state, opts) {
+  const s = Object.assign({}, state);
+  s.nudgeRuns = (s.nudgeRuns | 0) + 1;
+  const show = !s.nudgeShown && !(opts && opts.suppressed) && s.nudgeRuns >= NUDGE_AFTER_RUNS;
+  if (show) s.nudgeShown = true;
+  return { show, state: s };
+}
+
+function nudgeSuppressed(argv, stdoutIsTTY) {
+  return !stdoutIsTTY ||
+    argv.includes('--no-nudge') || argv.includes('--json') || argv.includes('--mcp') ||
+    argv.includes('--statusline') || argv.includes('--webhook') || argv.includes('--post-webhook');
+}
+
+function maybeNudge(argv, opts) {
+  opts = opts || {};
+  const file = opts.file || STATE_PATH;
+  const tty = opts.isTTY != null ? opts.isTTY : !!process.stdout.isTTY;
+  const r = nudgeDecision(readState(file), { suppressed: nudgeSuppressed(argv, tty) });
+  writeState(r.state, file);
+  if (r.show) process.stderr.write(NUDGE_LINE + '\n');
+  return r.show;
+}
+
 // ---- statusline (--statusline) -------------------------------------------
 // One plain line for statusline embedding (Claude Code statusLine, tmux,
 // shell prompts): "🧥 Mr. Rogers · 92/100 · 🟩🟩🟨". Speed is the contract:
@@ -3105,6 +3345,9 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --tiktok            same as --instagram but with TikTok-flavored instructions
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
                                office | succession | swfilms | marvel | parks
+  good-bot --scale-pack FILE   load a custom persona pack (a JSON ladder you or the community
+                               wrote — two free packs ship in packs/, format in packs/README.md;
+                               composes with --demo, --json, --share, everything)
   good-bot --random            roll a random rank (and random scale) — run again for another
   good-bot --quiz              7-question personality quiz (no transcripts required)
   good-bot --quiz-answers ABCD non-interactive quiz: pass the 7-letter answer string
@@ -3127,7 +3370,11 @@ const HELP = `good-bot — how nice are you to your AI?
                                "🧥 Mr. Rogers · 92/100 · 🟩🟩🟨" (6h cache in ~/.good-bot;
                                add --no-color for prompt-unsafe contexts)
   good-bot --leaderboard DIR   rank a directory of good-bot-card.json team exports
-  good-bot --audit             run with all network APIs blocked + print attestation
+  good-bot --audit             privacy self-audit: print every path it reads (and which exist),
+                               the 0-bytes-sent manifest, redaction rules + how to verify — then
+                               run with all network APIs blocked + print the attestation
+  good-bot --verify-privacy    same as --audit (the friendlier spelling)
+  good-bot --no-nudge          never show the one-time ⭐ star-the-repo line
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
@@ -3283,7 +3530,9 @@ function main() {
     teamFiles = [];
     for (let i = teamIdx + 1; i < argv.length && !String(argv[i]).startsWith('--'); i++) teamFiles.push(argv[i]);
   }
-  const wantAudit = argv.includes('--audit');
+  // --verify-privacy is the friendlier spelling of --audit: same network
+  // patches, same attestation, and both print the self-audit manifest first.
+  const wantAudit = argv.includes('--audit') || argv.includes('--verify-privacy');
 
   // Shadow variables so --audit can suppress ai+webhook everywhere without
   // touching the original arg-derived values (TDZ-safe declaration).
@@ -3294,6 +3543,9 @@ function main() {
   let auditCtx = null;
   if (wantAudit) {
     auditCtx = installNetworkAudit();
+    // The manifest half: what we read (and which paths exist), what we send
+    // (0 bytes), the redaction rules, and how to verify it all yourself.
+    process.stdout.write(renderPrivacyManifest());
     if (_webhookUrl) {
       process.stderr.write('--audit blocks all network egress; ignoring --webhook.\n');
       _webhookUrl = null;
@@ -3308,7 +3560,9 @@ function main() {
   }
 
   // --random with no explicit scale also randomizes which ladder you get.
-  const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null;
+  // A loaded --scale-pack counts as explicit — never clobber a custom pack.
+  const explicitScale = argVal('--scale') != null || process.env.NICENESS_SCALE != null ||
+    SCALE_PACK_FILE != null;
   if (random && !explicitScale) {
     const keys = Object.keys(SCALES);
     useScale(keys[Math.floor(Math.random() * keys.length)]);
@@ -3472,6 +3726,7 @@ function main() {
         process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
       }
       if (!noHistory) recordRun(persona, SCALE_NAME, scored.niceness);
+      maybeNudge(argv);
       if (wantRecord) {
         const dest = path.join(process.cwd(), 'good-bot-cast.json');
         try {
@@ -3718,6 +3973,7 @@ function main() {
     process.stderr.write('📦 wrote good-bot-card.json (use --compare later)\n');
   }
   if (!noHistory) recordRun(card.persona, SCALE_NAME, analysis.niceness);
+  maybeNudge(argv);
   if (wantRecord) {
     const dest = path.join(process.cwd(), 'good-bot-cast.json');
     try {
@@ -3754,6 +4010,10 @@ module.exports = {
   buildAsciinemaCast, writeCast,
   loadTeamCards, rankTeamCards, renderLeaderboard, renderTeamCard,
   installNetworkAudit, renderAuditReport,
+  privacyReadTargets, renderPrivacyManifest, PRIVACY_GREP_ONELINER,
+  validateScalePack, normalizeScalePack, loadScalePack, useScalePack,
+  STATE_PATH, readState, writeState, NUDGE_AFTER_RUNS, NUDGE_LINE,
+  nudgeDecision, nudgeSuppressed, maybeNudge,
   achievementCardLines, renderAchievementGallery,
   roastSeed, computeRoastStats, isSaintly, roastBucketIds, buildRoast,
   renderRoastCard, DEMO_ROAST_STATS,

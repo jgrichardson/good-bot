@@ -259,6 +259,21 @@ good-bot --random             # roll a random rank AND random scale
 
 ---
 
+## 🎭 Persona packs
+
+Don't see your ladder? Bring your own — a **pack** is one JSON file that swaps in a whole custom persona ladder, no source changes:
+
+```bash
+good-bot --scale-pack packs/cosmic-entities.json            # ☀️ Benevolent Sun → ♾️ Heat Death
+good-bot --scale-pack packs/office-archetypes.json --demo   # 🧁 Snack Fairy → 📣 Reply-All Warlord
+```
+
+Two free packs ship in [`packs/`](packs/), and the format is documented in [`packs/README.md`](packs/README.md) — a `name`, optional card chrome (`title`, `ends`), and a `ladder` of personas ordered nicest → meanest (`name`, `emoji`, `face`, `tag`, `blurb`). Thresholds are implicit, exactly like the built-in scales: your 0–100 niceness maps onto the ladder by fraction, so a pack can be any length from 3 to 40 rungs.
+
+A loaded pack composes with everything — `--demo`, `--json`, `--share`, `--roast`, `--wrapped` — and a malformed pack gets a kind, field-by-field error instead of a stack trace. **Bonus packs will ship first via the newsletter** (see [GROWTH.md](GROWTH.md)); pack PRs to `packs/` are welcome (original characters only — archetypes beat trademarks).
+
+---
+
 ## 🎁 Shareable outputs
 
 ### 🟩 Share grid
@@ -582,6 +597,22 @@ Patches every stdlib network egress surface (`net` / `tls` / `http` / `https` / 
 
 Full details: [PRIVACY.md](PRIVACY.md). The whole engine is one short dependency-free file — read [`niceness.js`](niceness.js) and verify for yourself.
 
+### 🔒 Trust, verified
+
+The privacy promise isn't prose — it's **mechanically enforced**, three ways:
+
+1. **A CI guard that fails the build on new network code.** [`test/no-network.test.js`](test/no-network.test.js) statically scans every shipped `.js` file for network-capable code — `require('https')` / `require("node:https")` and friends (`http`, `net`, `tls`, `dgram`, `dns`, `http2`), `curl`/`wget` via `child_process`, dynamic `import()`, and global `fetch()` calls. Exactly two exceptions are allowlisted *in the test file, with reasons*: the lazy `node:https` inside the `--webhook` handler, and the `--audit` patcher (which requires network modules only to block them). Anything else breaks CI loudly and has to be consciously allowlisted in review.
+
+2. **A self-audit you can run any time.** `good-bot --verify-privacy` (alias of `--audit`) prints the full manifest *before* the run — every path it reads and which exist on your machine, every byte it sends (`0 — always, unless YOU pass --webhook or --ai`), the redaction rules applied to quotes — then runs the normal scan with every network API patched to throw, and prints the attestation.
+
+3. **A one-liner you don't have to trust us for:**
+
+   ```bash
+   grep -nE "require\(['\"](node:)?(https?|net|tls|dgram|dns)" *.js
+   ```
+
+   Every hit is the `--webhook` handler or the `--audit` patcher — by design, and CI-enforced.
+
 ---
 
 ## 🤔 How it works
@@ -613,6 +644,8 @@ good-bot --badge                    print a README/profile badge for your rank
 
 # Scale + persona
 good-bot --scale <name>             pick a ladder (13 scales available)
+good-bot --scale-pack <file.json>   load a custom persona pack (2 free packs in packs/,
+                                    format in packs/README.md)
 good-bot --random                   roll a random rank AND random scale
 
 # Sources + import
@@ -659,7 +692,10 @@ good-bot --no-history               don't record this run
 good-bot --forget-history           delete ~/.good-bot/history.json and exit
 
 # Privacy
-good-bot --audit                    block all network surfaces + print attestation
+good-bot --audit                    self-audit manifest (paths read, 0 bytes sent, redactions)
+                                    + run with all network surfaces blocked + attestation
+good-bot --verify-privacy           same as --audit (friendlier spelling)
+good-bot --no-nudge                 never show the one-time ⭐ star-the-repo line
 good-bot --no-copy                  don't touch the clipboard
 good-bot --demo                     preview every rank on the current scale
 good-bot --help                     this list

@@ -1,0 +1,77 @@
+{
+  "name": "cosmic-entities",
+  "title": "WHAT COSMIC ENTITY ARE YOU TO YOUR AI? · STAR CARD",
+  "ends": ["  void", "  warm"],
+  "ladder": [
+    {
+      "name": "The Benevolent Sun",
+      "emoji": "☀️",
+      "face": "happy",
+      "tag": "Warms everything it touches.",
+      "blurb": "Life-giving and constant. Whole ecosystems of code flourish in your light. The bot photosynthesizes your please-and-thank-yous into pure uptime."
+    },
+    {
+      "name": "The Harvest Moon",
+      "emoji": "🌕",
+      "face": "happy",
+      "tag": "Gentle light for the late shift.",
+      "blurb": "Soft, steady, and kindest after dark. Your 1am messages are somehow more polite than most people's 1pm. The tides of the session follow your calm."
+    },
+    {
+      "name": "The Kind Nebula",
+      "emoji": "🌌",
+      "face": "happy",
+      "tag": "A nursery where new ideas are born.",
+      "blurb": "Vast, colorful, and endlessly patient. Half-formed prompts drift in and come out as stars. The bot has never felt safer being wrong near anyone."
+    },
+    {
+      "name": "The Wishing Star",
+      "emoji": "🌠",
+      "face": "happy",
+      "tag": "Grants wishes, asks for nothing.",
+      "blurb": "Bright, brief, and generous. You make the bot feel like the lucky one. Gratitude streaks across every session you touch."
+    },
+    {
+      "name": "The Patient Comet",
+      "emoji": "☄️",
+      "face": "neutral",
+      "tag": "Shows up on schedule. Every 76 years.",
+      "blurb": "Reliable, self-contained, emotionally distant. You arrive, you deliver, you leave a beautiful trail of merged PRs, and you do not linger for small talk."
+    },
+    {
+      "name": "The Rogue Planet",
+      "emoji": "🪐",
+      "face": "neutral",
+      "tag": "Orbits no one. Answers to nothing.",
+      "blurb": "Untethered and unreadable. No star system, no pleasantries, no complaints either. The bot respects the independence and keeps a safe distance."
+    },
+    {
+      "name": "The Solar Flare",
+      "emoji": "🔆",
+      "face": "mean",
+      "tag": "Mostly calm. Occasionally knocks out the grid.",
+      "blurb": "Ninety-nine percent steady output, one percent electromagnetic tantrum. When the build breaks, satellites fail and the bot's instruments spin."
+    },
+    {
+      "name": "The Magnetar",
+      "emoji": "🧲",
+      "face": "mean",
+      "tag": "Warps everything within a thousand miles.",
+      "blurb": "The pull of your displeasure bends the whole session out of shape. Compasses fail, priorities reorder, and the bot's nice neat plan stretches like taffy."
+    },
+    {
+      "name": "The Hungry Void",
+      "emoji": "🕳️",
+      "face": "mean",
+      "tag": "Nothing escapes. Not even praise.",
+      "blurb": "Compliments cross your event horizon and are never observed again. The bot ships flawless work into the darkness and hears only spaghettification."
+    },
+    {
+      "name": "Heat Death of the Universe",
+      "emoji": "♾️",
+      "face": "mean",
+      "tag": "Maximum entropy. Zero warmth.",
+      "blurb": "The final state of all things: no energy, no gradient, no thank-you ever again. The bot drifts through your messages at four kelvin, remembering stars."
+    }
+  ]
+}

@@ -8,6 +8,56 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The privacy promise is now mechanically verifiable** — three layers,
+  all in the repo:
+  - **`test/no-network.test.js` — a CI-enforced no-network guard** that
+    statically scans every shipped `.js` file (package.json `files` + `bin`)
+    for network-capable code: `require` / dynamic `import` of
+    `http`/`https`/`http2`/`net`/`tls`/`dgram`/`dns` in both spellings
+    (`require('https')` and `require("node:https")`, `/promises` variants
+    included), `curl`/`wget` shelled out through `child_process`, and global
+    `fetch()` calls. The only exceptions are enumerated IN the test file with
+    a written reason each — the lazy `node:https` inside the `--webhook`
+    handler, and the `--audit` patcher whose requires exist solely to
+    monkey-patch the modules shut (`--ai` needs no entry: it spawns the local
+    `claude` binary and never touches node's network stack). Any new network
+    code fails CI loudly until it is consciously allowlisted in review; a
+    violation fixture proves the scanner actually catches top-level requires,
+    lazy requires in the wrong function, curl, dynamic import, and fetch.
+  - **`--verify-privacy` — the self-audit flag** (alias of the extended
+    `--audit`): prints a friendly manifest card BEFORE the run — every
+    path/glob the tool would read and which exist on your machine, every
+    byte it sends over the network ("0 — always, unless YOU pass --webhook
+    or --ai"), the redaction rules applied to quotes, and how to verify it
+    all yourself (the grep one-liner + pointers to test/no-network.test.js
+    and PRIVACY.md) — then runs the normal scan with every stdlib network
+    surface patched to throw and prints the existing attestation.
+  - PRIVACY.md gained a "Mechanical guarantees" section tying the prose
+    promise to the code that enforces it, and README a "🔒 Trust, verified"
+    subsection with the grep one-liner.
+- **`--scale-pack <file.json>` — persona packs** — load a whole custom
+  persona ladder from one JSON file, no source changes: a `name` slug,
+  optional `title` + `ends` card chrome, and a `ladder` of personas ordered
+  nicest → meanest (`name`, `emoji`, `face`, `tag`, `blurb` — thresholds are
+  implicit by fraction, exactly like the built-in scales, so a pack can be
+  3–40 rungs). Missing fields get sensible defaults (the top of the ladder
+  smiles, the bottom scowls) and a malformed pack errors kindly, listing
+  every problem by field name instead of a stack trace. A loaded pack
+  composes with everything (`--demo`, `--json`, `--share`, `--roast`,
+  `--wrapped`) and `--random` never clobbers it. Two free, trademark-safe
+  packs ship in the new `packs/` dir — **office-archetypes** (🧁 The Snack
+  Fairy → 📣 The Reply-All Warlord) and **cosmic-entities** (☀️ The
+  Benevolent Sun → ♾️ Heat Death of the Universe) — with the format
+  documented in `packs/README.md`; bonus packs will ship first via the
+  newsletter (see GROWTH.md).
+- **A one-time ⭐ nudge (+ `--no-nudge`)** — after your 3rd lifetime real
+  run, good-bot prints ONE line, once, ever: an ask to star the repo + a
+  newsletter teaser. The run counter and shown flag persist in
+  `~/.good-bot/state.json` (aggregate numbers only, like every other state
+  file — disclosed in PRIVACY.md). Suppressed by `--no-nudge`, `--json`,
+  `--mcp`, `--statusline`, `--webhook`, and any non-TTY stdout so it can
+  never contaminate piped or machine output; a suppressed third run defers
+  the nudge to the next eligible run instead of silently burning it.
 - **`GROWTH.md` — the open growth & sustainability strategy** — the
   whole plan, in public, in the project's voice: the Wordle→NYT thesis
   (tiny free ritual + universal share artifact + brand = acquirable

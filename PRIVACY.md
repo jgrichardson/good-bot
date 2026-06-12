@@ -14,7 +14,7 @@
 - ❌ No network requests. It does not phone home, ping a server, or call any API or LLM.
 - ❌ No telemetry, no analytics, no tracking pixels, no Google Analytics, no Plausible, no anything.
 - ❌ No data collection. Nothing is uploaded, stored remotely, or shared.
-- The only file the CLI writes is `my-niceness-card.txt` in your current directory (your finished card), plus optionally the `--svg`, `--wrapped`, `--record`, and `--export json` outputs you explicitly asked for. Two small local state files live under `~/.good-bot/`: `history.json` (your own past run scores, for `--streak`) and `statusline.json` (a 6-hour cache of persona + score so `--statusline` is fast). Both contain only aggregate numbers and persona names — never transcript text — and both stay on your machine.
+- The only file the CLI writes is `my-niceness-card.txt` in your current directory (your finished card), plus optionally the `--svg`, `--wrapped`, `--record`, and `--export json` outputs you explicitly asked for. Three small local state files live under `~/.good-bot/`: `history.json` (your own past run scores, for `--streak`), `statusline.json` (a 6-hour cache of persona + score so `--statusline` is fast), and `state.json` (a run counter + a flag recording whether the one-time ⭐ star-the-repo line was already shown — `--no-nudge` suppresses it). All contain only aggregate numbers and persona names — never transcript text — and all stay on your machine.
 - The `--mcp` mode is equally local: it speaks the Model Context Protocol over **stdio only** (stdin/stdout with the MCP client on your machine, e.g. Claude Desktop or Claude Code). It opens no sockets, makes no network calls, writes no files, and its three tools (`niceness_report`, `niceness_stats`, `niceness_roast`) are strictly read-only over the same local transcripts listed above.
 
 By default, **your messages never leave your machine.** The CLI confirms this at the end of every local run:
@@ -160,14 +160,35 @@ This exists because you may post your card publicly. **Note:** regex redaction c
 
 `--json` prints your results as a single JSON object on stdout so teammates can swap cards and run `--compare`. By default it contains **no quotes from your transcripts** — only your persona, score, aggregate counts (messages, pleases, thank-yous, …), achievement ids, source names, and date range. Passing `--include-quotes` opts in to embedding your exhibit quotes, and even then they go through the same `sanitize()` redaction described above. Nothing is transmitted: the JSON goes to your terminal, and sending the file to a teammate is your own manual act.
 
+## Mechanical guarantees
+
+The claims in this file are not just policy — they are **enforced by code that fails the build when violated**:
+
+- **CI guard:** [`test/no-network.test.js`](test/no-network.test.js) statically scans every shipped `.js` file (the package.json `files` array + `bin`) for network-capable code: `require`/dynamic `import` of `http` / `https` / `http2` / `net` / `tls` / `dgram` / `dns` in both spellings (`require('https')` and `require("node:https")`), `curl`/`wget` shelled out via `child_process`, and global `fetch()` calls. The only allowed exceptions are enumerated *inside the test*, each with a written reason: the lazy `node:https` require inside the `--webhook` handler (section 2 above), and the `--audit` patcher, which requires the network modules solely to monkey-patch them shut. Any new network code — anywhere, in any shipped file — fails CI until it is consciously allowlisted in review **and** disclosed in this file first.
+- **Self-audit flag:** `good-bot --verify-privacy` (alias of `--audit`) prints, before the run, every path the tool reads (and which of them exist on your machine), the bytes it sends over the network (`0 — always, unless YOU pass --webhook or --ai`), and the redaction rules applied to quotes — then runs the normal scan with every stdlib network surface patched to throw, and prints the `✅ Provably no network call was attempted` attestation.
+- **Independent check:** you don't have to trust the test or the flag. One grep over the shipped source finds every network-module require:
+
+  ```bash
+  grep -nE "require\(['\"](node:)?(https?|net|tls|dgram|dns)" *.js
+  ```
+
+  Every hit is the `--webhook` handler or the `--audit` patcher.
+
 ## Verify it yourself
 
 ```bash
-# CLI: prove the default path makes no network calls
-node niceness.js --audit         # patches every network surface + prints attestation
+# CLI: the full self-audit — paths read, 0-bytes-sent manifest, redaction
+# rules, then the run with every network surface blocked + attestation
+node niceness.js --verify-privacy   # (alias: --audit)
 
 # CLI: or just run it with networking off
 node niceness.js                 # works completely offline
+
+# CLI: the static guard that CI runs on every push
+node --test test/no-network.test.js
+
+# One-liner: find every network-module require in the shipped source
+grep -nE "require\(['\"](node:)?(https?|net|tls|dgram|dns)" *.js
 
 # Web: open DevTools → Network tab → take the quiz
 # You should see ZERO requests until you tap a share button or the barometer button.
