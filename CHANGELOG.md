@@ -8,6 +8,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`GROWTH.md` — the open growth & sustainability strategy** — the
+  whole plan, in public, in the project's voice: the Wordle→NYT thesis
+  (tiny free ritual + universal share artifact + brand = acquirable
+  cultural property, with `--grid` / `--wrapped` / `--statusline` /
+  `#BeNiceToYourAI` as the analogs), the dev→consumer→ritual funnel,
+  value-for-value audience rules (core features never gated, no
+  telemetry, no dark patterns), the designed-but-NOT-built opt-in
+  global leaderboard sketch, worker-first B2B (candidate-owned AI
+  Collaboration Reports, k-anonymous n≥5 team wellness aggregates),
+  an explicit will-never-build red-lines section (no employer-side
+  screening, no manager dashboards of individuals, no involuntary
+  monitoring, no telemetry-by-default, no data sales — there is no
+  data), a one-line-per-channel distribution roadmap, and the metrics
+  we actually watch (including owning that npx runs are unmeasurable
+  by design). README links to it from the Contributing section.
 - **`--grid` — the Wordle-style share grid** — a compact, spoiler-free,
   paste-anywhere plain-text block: a `good-bot week 2026-W24 · 🧥 Mr.
   Rogers` header, one emoji per day for the last 7 calendar days ending

@@ -680,6 +680,8 @@ Contributions welcome and easy! The CLI is one ~4,000-line Node project with **z
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules (zero deps, privacy first, screenshot-friendly card), [IMPROVEMENTS.md](IMPROVEMENTS.md) for the v0.3 → v0.4 roadmap, and [CHANGELOG.md](CHANGELOG.md) for what's already shipped.
 
+📈 Where this is going: [GROWTH.md](GROWTH.md) — the project's growth & sustainability strategy, in public, where you can hold us to it.
+
 ```bash
 git clone https://github.com/jgrichardson/good-bot.git
 cd good-bot
