@@ -2260,6 +2260,26 @@ function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP + '\n'); return; }
   if (argv.includes('--demo')) {
+    // --json --demo emits a real machine-readable card built from the same
+    // canned saintly stats the achievements demo uses — handy for test-driving
+    // --compare without sharing real history, and it keeps the --json contract
+    // honest: stdout is always valid JSON, never the human gallery.
+    if (argv.includes('--json')) {
+      const stats = DEMO_ACHIEVEMENT_STATS;
+      const rep = buildJsonReport({
+        persona: personaForNiceness(stats.niceness),
+        niceness: stats.niceness,
+        stats,
+        apologies: stats.apologies,
+        achievements: evaluateAchievements(stats),
+        me: argv.includes('--me') ? argVal('--me') : null,
+        sources: { demo: stats.messages },
+        dateRange: { first: '2026-04-21', last: '2026-06-02', label: 'Apr 21, 2026 → Jun 2, 2026' },
+      });
+      process.stdout.write(JSON.stringify(rep, null, 2) + '\n');
+      process.stderr.write('🔒 demo data — JSON written to stdout, nothing was sent anywhere.\n');
+      return;
+    }
     // --achievements --demo previews the gallery on canned stats (a fun
     // handful unlocked, the legendaries mostly still 🔒 ???).
     if (argv.includes('--achievements')) {

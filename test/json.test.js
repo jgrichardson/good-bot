@@ -204,3 +204,25 @@ test('CLI --json --include-quotes: exhibits appear (and only then)', () => {
   const rep = JSON.parse(r.stdout);
   assert.ok(Array.isArray(rep.exhibits) && rep.exhibits.length > 0);
 });
+
+test('CLI --json --demo: valid JSON card from canned stats, not the human gallery', () => {
+  const r = spawnSync(process.execPath, [CLI, '--json', '--demo', '--me', 'Demo', '--no-copy'], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  const rep = JSON.parse(r.stdout);                  // throws if the gallery leaked through
+  assert.strictEqual(rep.generated_with, 'good-bot');
+  assert.strictEqual(rep.schema_version, 2);
+  assert.strictEqual(rep.me, 'Demo');
+  assert.ok(rep.persona.name);
+  assert.strictEqual(rep.score.niceness, 92);        // the canned saintly stats
+  assert.ok(rep.achievements.unlocked_count > 0);
+  assert.ok(!('exhibits' in rep), 'demo card carries no quotes');
+  assert.ok(!/\x1b\[/.test(r.stdout), 'no ANSI color codes in JSON output');
+  // and the demo card round-trips through --compare
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gb-json-demo-'));
+  const file = path.join(dir, 'demo.json');
+  fs.writeFileSync(file, r.stdout);
+  const cmp = spawnSync(process.execPath, [CLI, '--compare', file, file, '--no-copy'], { encoding: 'utf8' });
+  assert.strictEqual(cmp.status, 0);
+  assert.match(cmp.stdout.replace(/\x1b\[[0-9;]*m/g, ''), /HEAD-TO-HEAD/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
