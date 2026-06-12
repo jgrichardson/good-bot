@@ -46,13 +46,15 @@ Sends a **small, redacted sample** of your messages to **your own local `claude`
 ⚠️  --ai sends a REDACTED sample of your own messages to your local `claude`.
 ```
 
-### 2. CLI `--post-webhook URL` flag
+### 2. CLI `--webhook URL` flag (alias: `--post-webhook`)
 
-POSTs the (already-redacted) plain-text card to a Slack-/Discord-compatible webhook URL **that you supply**. Before it does, it prints:
+POSTs the (already-redacted, ANSI-stripped) plain-text card to a Slack-/Discord-compatible webhook URL **that you supply, every run** — no URL is ever stored or remembered. Before it sends anything, it prints:
 
 ```
-⚠️  --post-webhook sends your REDACTED card to <host>
+📤 Sending your card (text only, no transcripts) to <host> — your own webhook
 ```
+
+See the "Network features (opt-in only)" section below for the exact payload.
 
 ### 3. CLI / Web `--share <platform>` flag / Share button
 
@@ -63,6 +65,21 @@ Builds a pre-filled compose URL for Twitter / Bluesky / Threads / LinkedIn / Red
 This is the global niceness aggregator (see next section).
 
 There is no fifth code path. Read the source — it's one short, dependency-free file ([`niceness.js`](niceness.js)) plus the web bundle ([`web/`](web/)) and the worker ([`worker/`](worker/)). Everything is open source and self-evident.
+
+## Network features (opt-in only)
+
+The CLI's **single deliberate network write** is `--webhook` (alias `--post-webhook`). Here is everything it does:
+
+- **Trigger:** only when you pass `--webhook <url>` explicitly. The URL is required **every run** — there is no stored default, no config file, no environment fallback.
+- **Payload:** one JSON object containing your already-rendered card as plain text — `{"text": "<your card>"}` for Slack-compatible hooks, or `{"content": "<your card>"}` when the host is `discord.com` / `discordapp.com` (that's the only host-based behavior difference). The card text is the same redacted, ANSI-stripped text you just saw on screen: persona, score, aggregate counts, and (for the main card) the redacted exhibit quotes. **Never raw transcripts**, never file paths, never anything you didn't already see printed.
+- **Destination:** the webhook URL *you* supply — your own Slack/Discord workspace. `https://` is required; anything else is refused.
+- **Notice:** a one-line `📤 Sending your card (text only, no transcripts) to <host> — your own webhook` prints before the request fires.
+- **Timeout:** 5 seconds, then it gives up with a friendly error. One POST, no retries, no follow-up requests.
+- **Implementation:** `node:https` is lazy-loaded inside this one handler and nowhere else in the CLI, so no other flag can even reach the network stack. `--audit` refuses to combine with it.
+
+Building share links (`--share`, `--share <platform>`) is **not** a network feature: the URLs are assembled locally and printed/copied; the only network activity is your own browser when you click one (or pass `--open`).
+
+**Future: opt-in global leaderboard (not yet built).** We may someday add an opt-in CLI leaderboard like the web barometer (aggregate score submission, no transcripts, no PII). It does not exist yet — there is no code for it in the CLI today. If and when it ships, it will be off by default, disclosed in this file *first*, and follow the same rules as the barometer above.
 
 ## The web barometer (opt-in only)
 
@@ -126,7 +143,7 @@ The worker source is in the repo at [`worker/index.js`](worker/index.js). Read i
 
 ## Redaction (CLI + web sharing)
 
-Any quoted snippet that appears on the card — or in the `--ai` sample, or any `--share` / `--post-webhook` output — is run through `sanitize()` first, which masks:
+Any quoted snippet that appears on the card — or in the `--ai` sample, or any `--share` / `--webhook` output — is run through `sanitize()` first, which masks:
 
 - email addresses → `[email]`
 - URLs → `[link]`

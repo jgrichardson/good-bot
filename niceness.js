@@ -2206,6 +2206,37 @@ function renderLeaderboard(cards, opts) {
   return lines.join('\n');
 }
 
+// ---- office leaderboard (--team a.json b.json …) -------------------------
+// Built on the same normalizeCardRecord wire format as --compare and
+// --leaderboard: hand it 2+ card files (shell globs expand fine) and get a
+// ranked office card — 👑 crowns the kindest, 🥄 wooden-spoons the harshest,
+// and the whole team's average niceness maps to a team aggregate persona.
+
+function renderTeamCard(cards) {
+  const ranked = rankTeamCards(cards);
+  const n = ranked.length;
+  const avg = Math.round(ranked.reduce((a, c) => a + c.niceness, 0) / Math.max(n, 1));
+  const teamPersona = personaForNiceness(avg);
+  const who = c => (c.displayName || c.persona.name).slice(0, 16);
+  const lines = [''];
+  for (const l of banner('OFFICE LEADERBOARD · BE NICE TO YOUR AI')) lines.push(l);
+  lines.push('');
+  lines.push(color('     ' + pad('who', 18) + pad('persona', 22) + pad('score', 9) + pad('pleases', 9) + 'f-bombs', '90'));
+  lines.push(color('  ' + '─'.repeat(60), '90'));
+  ranked.forEach((c, i) => {
+    const mark = i === 0 ? '👑' : i === n - 1 ? '🥄' : ' ·';
+    const persona = `${c.persona.emoji || ''} ${c.persona.name}`.trim().slice(0, 20);
+    lines.push(`  ${mark} ` + pad(who(c), 18) + pad(persona, 22) +
+      pad(`${c.niceness}/100`, 9) + pad(String(c.stats.pleases | 0), 9) + String(c.stats.fbombs | 0));
+  });
+  lines.push(color('  ' + '─'.repeat(60), '90'));
+  lines.push(`  👑 kindest: ${who(ranked[0])} · 🥄 wooden spoon: ${who(ranked[n - 1])}`);
+  lines.push(`  Team persona: ${teamPersona.emoji} ${teamPersona.name} (avg ${avg}/100 across ${n} human${n === 1 ? '' : 's'})`);
+  lines.push(color('  be nice to your AI · #BeNiceToYourAI', '90'));
+  lines.push('');
+  return lines.join('\n');
+}
+
 // ---- asciinema cast export ---------------------------------------------
 // Writes an asciinema-v2-format .cast file (JSON) of the rendered card.
 // Spec: https://docs.asciinema.org/manual/asciicast/v2/
@@ -2247,28 +2278,54 @@ function writeCast(text, dest, opts) {
   return dest;
 }
 
-// ---- webhook posting ---------------------------------------------------
-// Opt-in: post the (already-redacted) card text to a Slack-/Discord-compatible
-// webhook for the team channel leaderboard mechanic. The body is JSON
-// {"text": "..."}, which both Slack incoming webhooks and Discord webhooks
-// accept. We use node:https so the project stays dependency-free.
+// ---- webhook posting (--webhook / --post-webhook) ------------------------
+// Opt-in: post the (already-redacted, ANSI-stripped) card text to a Slack-/
+// Discord-compatible incoming webhook URL the user supplies on the command
+// line — every run, no stored default. This is THE one deliberate network
+// write in the product: node:https is lazy-required inside sendWebhook and
+// nowhere else, so no other code path can even reach it. Slack incoming
+// webhooks take {"text": "..."}; Discord webhooks (discord.com /
+// discordapp.com) want {"content": "..."} — buildWebhookPayload picks the
+// right key from the host so both work out of the box.
 
-function postWebhook(url, plainText) {
+const WEBHOOK_TIMEOUT_MS = 5000;
+
+// Pure payload builder (exported for tests — no network here, ever).
+function buildWebhookPayload(url, plainText) {
+  const u = new URL(url);
+  const host = u.hostname.toLowerCase();
+  const discord = host === 'discord.com' || host === 'discordapp.com' ||
+    host.endsWith('.discord.com') || host.endsWith('.discordapp.com');
+  const key = discord ? 'content' : 'text';
+  return { host: u.hostname, key, body: JSON.stringify({ [key]: String(plainText) }) };
+}
+
+// The one-line notice printed before any send — loud, honest, every time.
+function webhookNotice(url, what) {
+  let host = url; try { host = new URL(url).hostname; } catch (_) {}
+  return `📤 Sending your ${what} (text only, no transcripts) to ${host} — your own webhook\n`;
+}
+
+// `opts.transport` lets tests inject a fake https module so the payload and
+// request shape are verifiable without a single real socket.
+function sendWebhook(url, plainText, opts) {
+  opts = opts || {};
   return new Promise((resolve) => {
     let u;
     try { u = new URL(url); } catch (e) { return resolve({ ok: false, error: `bad URL: ${e.message}` }); }
     if (u.protocol !== 'https:') {
       return resolve({ ok: false, error: 'webhook URL must be https://' });
     }
-    const lib = require('node:https');
-    const body = JSON.stringify({ text: plainText });
+    const payload = buildWebhookPayload(url, plainText);
+    const lib = opts.transport || require('node:https');   // lazy: the ONLY network write
+    const timeoutMs = opts.timeoutMs || WEBHOOK_TIMEOUT_MS;
     const req = lib.request({
       method: 'POST',
       hostname: u.hostname,
       port: u.port || 443,
       path: u.pathname + (u.search || ''),
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      timeout: 8000,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload.body) },
+      timeout: timeoutMs,
     }, (res) => {
       let buf = '';
       res.on('data', (c) => { buf += c.toString('utf8'); if (buf.length > 4096) buf = buf.slice(0, 4096); });
@@ -2277,12 +2334,20 @@ function postWebhook(url, plainText) {
         resolve({ ok, status: res.statusCode, body: buf.slice(0, 200), host: u.hostname });
       });
     });
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
-    req.on('error', (e) => resolve({ ok: false, error: e.message }));
-    req.write(body);
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: `timeout after ${timeoutMs}ms` }); });
+    // AggregateError (e.g. ECONNREFUSED on every address) can carry an empty
+    // message — dig out something human before giving up.
+    req.on('error', (e) => resolve({
+      ok: false,
+      error: e.message || (e.errors && e.errors[0] && e.errors[0].message) || e.code || 'connection failed',
+    }));
+    req.write(payload.body);
     req.end();
   });
 }
+
+// Back-compat name — --post-webhook is now an alias for --webhook.
+function postWebhook(url, plainText) { return sendWebhook(url, plainText); }
 
 // ---- export + compare --------------------------------------------------
 // --export json writes a self-contained card record so two runs can be
@@ -2880,6 +2945,120 @@ function openUrl(url) {
     : ['xdg-open', [url]];
   try { spawnSync(cmd[0], cmd[1], { detached: true, stdio: 'ignore' }); } catch (_) {}
 }
+
+// ---- share grid (--grid) --------------------------------------------------
+// A Wordle-style share artifact: a compact plain-text block (no ANSI, no
+// quotes, no spoilers) anyone can paste anywhere. One emoji per day for the
+// last 7 calendar days ending at your most recent active day — 🟩 warm,
+// 🟨 mixed, 🟥 harsh, ⬜ no data — under a one-line header and over an
+// optional one-stat brag. Records only need { ts, mood }, so the same
+// builder runs on real scored records and on the synthetic demo history.
+
+const GRID_DAYS = 7;
+const GRID_TONE_EMOJI = { warm: '🟩', mixed: '🟨', harsh: '🟥', none: '⬜' };
+
+// ISO-8601 week label ("2026-W24") for the grid header.
+function isoWeekLabel(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;                  // Mon=1 … Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);          // shift to the week's Thursday
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+// One day's tone from its records' mood signs. Harsh when negative messages
+// outnumber positive; warm when positive leads AND harsh stays ≤15%; mixed
+// otherwise (including all-neutral days). No data → 'none' (⬜).
+function gridDayTone(records) {
+  if (!records || !records.length) return 'none';
+  let pos = 0, neg = 0;
+  for (const r of records) { if (r.mood > 0) pos++; else if (r.mood < 0) neg++; }
+  if (neg > pos) return 'harsh';
+  if (pos > neg && neg / records.length <= 0.15) return 'warm';
+  return 'mixed';
+}
+
+function gridDayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Group records by local day and return the tone of each of the last `days`
+// calendar days ending at the most recent active day (oldest → newest), plus
+// that anchor day. Timestamp-free histories get a full ⬜ row.
+function buildGridDays(records, days) {
+  days = days || GRID_DAYS;
+  const byDay = new Map();
+  for (const r of records || []) {
+    if (!r.ts) continue;
+    const d = new Date(r.ts);
+    if (isNaN(d)) continue;
+    const key = gridDayKey(d);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(r);
+  }
+  if (!byDay.size) return { tones: new Array(days).fill('none'), anchor: null };
+  const lastKey = [...byDay.keys()].sort().pop();
+  const [y, m, dd] = lastKey.split('-').map(Number);
+  const anchor = new Date(y, m - 1, dd);
+  const tones = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - i);
+    tones.push(gridDayTone(byDay.get(gridDayKey(d))));
+  }
+  return { tones, anchor };
+}
+
+// The one-stat brag line. Deterministic picks, biggest flex first.
+function gridBrag(stats) {
+  if (!stats || !(stats.messages > 0)) return null;
+  const niceties = (stats.pleases | 0) + (stats.thanks | 0);
+  if ((stats.fbombs | 0) === 0 && stats.messages >= 100) return `0 f-bombs in ${fmtCount(stats.messages)} messages 🧯`;
+  if (niceties > 0) return `${fmtCount(niceties)} niceties across ${fmtCount(stats.messages)} messages 🙏`;
+  return `${fmtCount(stats.messages)} messages graded 🤖`;
+}
+
+// The full paste-anywhere block. Plain text only — never any ANSI codes.
+function buildGridBlock(persona, records, stats, opts) {
+  opts = opts || {};
+  const { tones, anchor } = buildGridDays(records, opts.days);
+  const week = isoWeekLabel(anchor || opts.now || new Date());
+  const lines = [`good-bot week ${week} · ${persona.emoji ? persona.emoji + ' ' : ''}${persona.name}`];
+  lines.push(tones.map(t => GRID_TONE_EMOJI[t] || GRID_TONE_EMOJI.none).join(''));
+  const brag = gridBrag(stats);
+  if (brag) lines.push(brag);
+  return lines.join('\n');
+}
+
+// ---- share intents (bare --share) -----------------------------------------
+// Prefilled share-intent URLs for the grid block — X/Twitter and LinkedIn.
+// URLs only: building them makes NO network call; opening one is the user's
+// own click (or the explicit --open flag).
+function buildShareIntents(gridText) {
+  const text = gridText + '\n\n#BeNiceToYourAI';
+  return [
+    {
+      name: 'Twitter / X',
+      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(REPO_URL)}`,
+    },
+    {
+      name: 'LinkedIn',
+      url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(REPO_URL)}&summary=${encodeURIComponent(text)}`,
+    },
+  ];
+}
+
+// Print the intent links (and optionally open them). Shared by the --grid,
+// card, and demo paths.
+function printShareIntents(gridText, open) {
+  const intents = buildShareIntents(gridText);
+  process.stdout.write('\n📣 Ready-to-click share links (nothing is sent until YOU click):\n');
+  for (const it of intents) process.stdout.write(`   ${it.name}:\n   ${it.url}\n`);
+  if (open) {
+    for (const it of intents) openUrl(it.url);
+    process.stderr.write('(opened in your browser)\n');
+  }
+}
 function emitSample(analysis, stats, span) {
   const lines = ['NICENESS_DATA v1 — feed this to the grader.'];
   lines.push(`STATS messages=${stats.messages} pleases=${stats.pleases} thanks=${stats.thanks} fbombs=${stats.fbombs} shouts=${stats.shouts} niceness=${Math.round(analysis.niceness)} span=${span}`);
@@ -2915,8 +3094,13 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
+  good-bot --grid              Wordle-style 7-day tone grid (🟩🟨🟥⬜) — spoiler-free, paste
+                               anywhere, copied to your clipboard (try with --demo)
+  good-bot --share             print prefilled X/Twitter + LinkedIn share links for your grid
+                               (URLs only — nothing is sent until you click; add --open)
   good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit | threads (copies to clipboard)
-  good-bot --share-open        also open the share URL in your browser
+  good-bot --open              with --share: also open the share URL(s) in your browser
+  good-bot --share-open        same as --open (older spelling)
   good-bot --instagram         dead-simple path: render wrapped PNG + stage IG caption
   good-bot --tiktok            same as --instagram but with TikTok-flavored instructions
   good-bot --scale <name>      people | spice | weather | coffee | dnd | trek | dogs | hogwarts
@@ -2930,7 +3114,11 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --compare a.json b.json  head-to-head: whose AI relationship wins?
   good-bot --compare theirs.json    one file = them vs. YOUR fresh local result
   good-bot --me <name>         label the card (for export + compare display)
-  good-bot --post-webhook URL  opt-in: POST the (redacted) card to a Slack/Discord webhook
+  good-bot --team a.json b.json …  office leaderboard from 2+ teammate card files (shell globs
+                               work) — 👑 kindest, 🥄 wooden spoon, team aggregate persona
+  good-bot --webhook URL       opt-in: POST the (redacted, ANSI-stripped) card to a Slack/Discord
+                               incoming webhook you supply — the ONLY network write in the
+                               product (alias: --post-webhook); URL required every run
   good-bot --record            write good-bot-cast.json (asciinema v2 — embed anywhere)
   good-bot --mcp               run as an MCP stdio server for Claude Desktop / Claude Code
                                (tools: niceness_report, niceness_stats, niceness_roast — all
@@ -2952,13 +3140,18 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --help
 
 Privacy: default mode is 100% local — no network, no LLM, no data collection.
-Quoted snippets are redacted. --ai is the only path that sends anything, and
-only a redacted sample to your own local 'claude'.`;
+Quoted snippets are redacted. The only paths that ever send anything are the
+opt-in --ai (a redacted sample to your own local 'claude') and --webhook
+(your redacted card to a webhook URL you supply).`;
 
 // ---- main ----------------------------------------------------------------
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP + '\n'); return; }
+  // Bare --share (no platform, or the next token is another flag) means the
+  // grid-flavored share-intent links rather than a single platform composer.
+  const shareArgRaw = argv.includes('--share') ? argVal('--share') : null;
+  const bareShare = argv.includes('--share') && (!shareArgRaw || shareArgRaw.startsWith('--'));
   // --mcp and --statusline are handled BEFORE the --demo block so that
   // `--mcp --demo` serves demo-backed tools and `--statusline --demo` prints
   // the demo line — neither should fall into the every-rank gallery.
@@ -3018,6 +3211,19 @@ function main() {
       process.stderr.write('🔒 demo data — synthetic history, nothing read, nothing sent.\n');
       return;
     }
+    // --grid --demo (and bare --share --demo) preview the Wordle-style tone
+    // grid on the same deterministic synthetic history --lab --demo uses.
+    if (argv.includes('--grid') || bareShare) {
+      const stats = DEMO_ACHIEVEMENT_STATS;
+      const grid = buildGridBlock(personaForNiceness(stats.niceness), demoLabRecords(), stats);
+      if (argv.includes('--grid')) {
+        process.stdout.write(grid + '\n');
+        if (!argv.includes('--no-copy')) copyClipboard(grid);
+      }
+      if (bareShare) printShareIntents(grid, false);
+      process.stderr.write('🔒 demo data — synthetic history, nothing read, nothing sent.\n');
+      return;
+    }
     renderDemo();
     return;
   }
@@ -3038,8 +3244,9 @@ function main() {
   const random = argv.includes('--random');
   const importPath = argv.includes('--import') ? argVal('--import') : null;
   const source = argVal('--source');
-  const sharePlatform = argv.includes('--share') ? argVal('--share') : null;
-  const shareOpen = argv.includes('--share-open');
+  const sharePlatform = bareShare ? null : shareArgRaw;
+  const shareOpen = argv.includes('--share-open') || argv.includes('--open');
+  const wantGrid = argv.includes('--grid');
   const wantQuiz = argv.includes('--quiz') || argv.includes('--quiz-answers');
   const quizAnswers = argv.includes('--quiz-answers') ? argVal('--quiz-answers') : null;
   const wantInstagram = argv.includes('--instagram');
@@ -3056,9 +3263,26 @@ function main() {
   // flags (`--compare a.json --no-copy`) can't masquerade as file b.
   const compareFiles = compareIdx >= 0 ? argv.slice(compareIdx + 1, compareIdx + 3).filter(f => f && !f.startsWith('--')) : null;
   const myName = argv.includes('--me') ? argVal('--me') : null;
-  const webhookUrl = argv.includes('--post-webhook') ? argVal('--post-webhook') : null;
+  // --webhook is the canonical flag (--post-webhook is the older alias). The
+  // URL is required EVERY run — there is no stored default, by design.
+  const wantWebhook = argv.includes('--webhook') || argv.includes('--post-webhook');
+  const webhookUrl = argv.includes('--webhook') ? argVal('--webhook')
+    : argv.includes('--post-webhook') ? argVal('--post-webhook') : null;
+  if (wantWebhook && (!webhookUrl || webhookUrl.startsWith('--'))) {
+    process.stderr.write('--webhook needs an explicit https:// URL every run (none is ever stored).\n' +
+      'Example: good-bot --webhook https://hooks.slack.com/services/T000/B000/XXXX\n');
+    process.exit(1);
+  }
   const wantRecord = argv.includes('--record');
   const leaderboardDir = argv.includes('--leaderboard') ? argVal('--leaderboard') : null;
+  // --team: every consecutive non-flag arg after the flag is a card file —
+  // which is exactly what a shell glob (team-cards/*.json) expands to.
+  const teamIdx = argv.indexOf('--team');
+  let teamFiles = null;
+  if (teamIdx >= 0) {
+    teamFiles = [];
+    for (let i = teamIdx + 1; i < argv.length && !String(argv[i]).startsWith('--'); i++) teamFiles.push(argv[i]);
+  }
   const wantAudit = argv.includes('--audit');
 
   // Shadow variables so --audit can suppress ai+webhook everywhere without
@@ -3071,7 +3295,7 @@ function main() {
   if (wantAudit) {
     auditCtx = installNetworkAudit();
     if (_webhookUrl) {
-      process.stderr.write('--audit blocks all network egress; ignoring --post-webhook.\n');
+      process.stderr.write('--audit blocks all network egress; ignoring --webhook.\n');
       _webhookUrl = null;
     }
     if (_useAi) {
@@ -3142,15 +3366,46 @@ function main() {
     process.stdout.write(text + '\n');
     const plainLb = text.replace(/\x1b\[[0-9;]*m/g, '');
     if (!noCopy) copyClipboard(plainLb);
-    if (webhookUrl) {
-      let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
-      process.stderr.write(`\n⚠️  --post-webhook sends the leaderboard to ${host || webhookUrl}\n`);
-      postWebhook(webhookUrl, plainLb).then(r => {
+    if (_webhookUrl) {
+      process.stderr.write('\n' + webhookNotice(_webhookUrl, 'leaderboard'));
+      sendWebhook(_webhookUrl, plainLb).then(r => {
         if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
         else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status)}\n`);
       });
     }
-    process.stderr.write('🔒 100% local — read ' + cards.length + ' card files; nothing was sent anywhere (unless --post-webhook).\n');
+    process.stderr.write('🔒 100% local — read ' + cards.length + ' card files; nothing was sent anywhere (unless --webhook).\n');
+    return;
+  }
+
+  // --team: an office leaderboard from explicit card files (2+ required).
+  // Same wire formats as --compare; same kind errors; same webhook ride-along
+  // as --leaderboard for posting the card to the team channel.
+  if (teamFiles) {
+    if (teamFiles.length < 2) {
+      process.stderr.write('--team needs two or more good-bot JSON files (shell globs work).\n' +
+        'Each teammate makes one with:  good-bot --me "Name" --json > name.json\n' +
+        'Then:  good-bot --team alice.json bob.json carol.json\n');
+      process.exit(1);
+    }
+    const teamCards = [];
+    for (const f of teamFiles) {
+      let c;
+      try { c = readCardJson(f); } catch (e) { process.stderr.write(e.message + '\n'); process.exit(1); }
+      warnCardVersion(c, f);
+      teamCards.push(c);
+    }
+    const text = renderTeamCard(teamCards);
+    process.stdout.write(text + '\n');
+    const plainTeam = text.replace(/\x1b\[[0-9;]*m/g, '');
+    if (!noCopy) copyClipboard(plainTeam);
+    if (_webhookUrl) {
+      process.stderr.write('\n' + webhookNotice(_webhookUrl, 'team card'));
+      sendWebhook(_webhookUrl, plainTeam).then(r => {
+        if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
+        else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status)}\n`);
+      });
+    }
+    process.stderr.write('🔒 100% local — read ' + teamCards.length + ' card files; nothing was sent anywhere (unless --webhook).\n');
     return;
   }
 
@@ -3225,9 +3480,8 @@ function main() {
         } catch (e) { process.stderr.write(`cast export failed: ${e.message}\n`); }
       }
       if (webhookUrl) {
-        let host = ''; try { host = new URL(webhookUrl).hostname; } catch (_) {}
-        process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || webhookUrl}\n`);
-        postWebhook(webhookUrl, plain).then(r => {
+        process.stderr.write('\n' + webhookNotice(webhookUrl, 'card'));
+        sendWebhook(webhookUrl, plain).then(r => {
           if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
           else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status + ' — ' + (r.body || ''))}\n`);
         });
@@ -3277,6 +3531,19 @@ function main() {
     const galleryText = renderAchievementGallery(achievements);
     process.stdout.write(galleryText + '\n');
     if (!noCopy) copyClipboard(galleryText.replace(/\x1b\[[0-9;]*m/g, ''));
+    process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected.\n');
+    return;
+  }
+
+  // --grid: the Wordle-style share grid replaces the card. Plain text, no
+  // quotes, no spoilers; copied to the clipboard like the main card. Bare
+  // --share rides along with prefilled intent links for the same block.
+  if (wantGrid) {
+    const grid = buildGridBlock(pickPersona(analysis.sig), analysis.scored, stats);
+    process.stdout.write(grid + '\n');
+    if (bareShare) printShareIntents(grid, shareOpen);
+    if (!noCopy) copyClipboard(grid);
+    process.stderr.write(`\n(grid ${noCopy ? 'ready above' : 'copied to your clipboard'} — paste it anywhere)\n`);
     process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected.\n');
     return;
   }
@@ -3432,6 +3699,10 @@ function main() {
       process.stdout.write(`\n📣 Share to ${shareInfo.name}:\n${shareInfo.url}\n`);
       if (shareOpen) { openUrl(shareInfo.url); process.stderr.write(`(opened in your browser)\n`); }
     }
+  } else if (bareShare) {
+    // Bare --share: prefilled X/Twitter + LinkedIn intent links carrying your
+    // grid block. URLs only — nothing is sent until you click (or pass --open).
+    printShareIntents(buildGridBlock(card.persona, analysis.scored, stats), shareOpen);
   }
 
   // --share: clipboard gets the URL (paste straight into Twitter/Bluesky/etc).
@@ -3454,10 +3725,9 @@ function main() {
       process.stderr.write(`🎬 wrote ${dest} (play with: asciinema play ${path.basename(dest)})\n`);
     } catch (e) { process.stderr.write(`cast export failed: ${e.message}\n`); }
   }
-  if (webhookUrl) {
-    let host = ''; try { host = new URL(_webhookUrl).hostname; } catch (_) {}
-    process.stderr.write(`\n⚠️  --post-webhook sends your REDACTED card to ${host || _webhookUrl}\n`);
-    postWebhook(_webhookUrl, plain).then(r => {
+  if (_webhookUrl) {
+    process.stderr.write('\n' + webhookNotice(_webhookUrl, 'card'));
+    sendWebhook(_webhookUrl, plain).then(r => {
       if (r.ok) process.stderr.write(`✅ posted to ${r.host} (HTTP ${r.status})\n`);
       else process.stderr.write(`❌ webhook post failed: ${r.error || ('HTTP ' + r.status + ' — ' + (r.body || ''))}\n`);
     });
@@ -3478,9 +3748,11 @@ module.exports = {
   summarizeHistory, renderStreakReport,
   buildExportRecord, readCardJson, renderCompare,
   PKG_VERSION, personaId, buildJsonReport, normalizeCardRecord, compareQuip,
-  postWebhook,
+  postWebhook, buildWebhookPayload, sendWebhook, webhookNotice, WEBHOOK_TIMEOUT_MS,
+  GRID_TONE_EMOJI, isoWeekLabel, gridDayTone, buildGridDays, gridBrag, buildGridBlock,
+  buildShareIntents,
   buildAsciinemaCast, writeCast,
-  loadTeamCards, rankTeamCards, renderLeaderboard,
+  loadTeamCards, rankTeamCards, renderLeaderboard, renderTeamCard,
   installNetworkAudit, renderAuditReport,
   achievementCardLines, renderAchievementGallery,
   roastSeed, computeRoastStats, isSaintly, roastBucketIds, buildRoast,

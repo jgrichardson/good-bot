@@ -261,11 +261,40 @@ good-bot --random             # roll a random rank AND random scale
 
 ## 🎁 Shareable outputs
 
+### 🟩 Share grid
+
+```bash
+good-bot --grid               # Wordle-style 7-day tone grid, copied to your clipboard
+good-bot --grid --demo        # preview it on synthetic history
+```
+
+The Wordle mechanic, for your AI manners — a compact, spoiler-free, paste-anywhere plain-text block:
+
+```
+good-bot week 2026-W24 · 🧥 Mr. Rogers
+🟩🟩🟨⬜🟩🟥🟩
+0 f-bombs in 1.8k messages 🧯
+```
+
+One emoji per day for your last 7 days (🟩 warm · 🟨 mixed · 🟥 harsh · ⬜ no data), plus a one-stat brag. No quotes, no scores spoiled, nothing your colleagues shouldn't see — drop it in Slack and watch the rematch requests roll in.
+
+### 📣 Share / webhook
+
+```bash
+good-bot --share              # print prefilled X/Twitter + LinkedIn share links (grid included)
+good-bot --share --open       # …and open them in your browser
+good-bot --webhook https://hooks.slack.com/…   # POST your card to YOUR webhook (Discord works too)
+```
+
+Bare `--share` prints ready-to-click share-intent URLs carrying your grid block + `#BeNiceToYourAI` + the repo link, properly URL-encoded. Building the URLs makes **zero network calls** — nothing is posted until *you* click (or pass `--open`).
+
+`--webhook <url>` is the **only network write in the product**: it POSTs your (redacted, ANSI-stripped) plain-text card to a Slack-/Discord-compatible incoming webhook you supply — `{"text": …}` for Slack and friends, `{"content": …}` automatically for `discord.com` hosts. The URL is required every run (nothing is ever stored), a clear notice prints before sending, and it gives up kindly after 5 seconds. Full disclosure in [PRIVACY.md](PRIVACY.md).
+
 ### One-click social share
 
 ```bash
 good-bot --share twitter      # also: bluesky | linkedin | reddit | threads (aliases: x, bsky)
-good-bot --share-open         # also open the compose page in your browser
+good-bot --share twitter --open   # also open the compose page in your browser
 ```
 
 Builds a pre-filled compose URL with your persona, scale, and `#BeNiceToYourAI` hashtag, and copies the URL to your clipboard. Paste straight into Twitter / Bluesky / LinkedIn / Reddit / Threads.
@@ -347,6 +376,16 @@ persona, score, totals, achievements, sources, and date range. Opt in with
 from older versions and `--export json` files compare fine; a version mismatch
 warns and proceeds.
 
+### 🏆 Team leaderboard
+
+Got everyone's card files in hand? One command:
+
+```bash
+good-bot --team alice.json bob.json carol.json   # or: good-bot --team team-cards/*.json
+```
+
+Ranks 2+ teammate cards (the same `--json` / `--export json` files `--compare` reads) into an office leaderboard: persona, score, pleases, and f-bombs per human, a 👑 crown on the kindest, a 🥄 wooden spoon for the harshest, and a **team aggregate persona** computed from the average niceness — find out whether your office is collectively Tim Gunn or collectively Gordon Ramsay. Add `--webhook <url>` to post it straight to the team channel.
+
 ### Weekly office leaderboard
 
 1. Each teammate commits their card to `team-cards/<name>.json`.
@@ -363,10 +402,10 @@ good-bot --leaderboard team-cards
 ### Webhook posting
 
 ```bash
-good-bot --post-webhook https://hooks.slack.com/...   # works with Discord too
+good-bot --webhook https://hooks.slack.com/...   # works with Discord too (alias: --post-webhook)
 ```
 
-POSTs your (redacted) card to a Slack-/Discord-compatible incoming webhook. Body is `{"text": "..."}` — both platforms accept it.
+POSTs your (redacted, ANSI-stripped) card to a Slack-/Discord-compatible incoming webhook **you supply, every run** — no URL is ever stored. Body is `{"text": "..."}` for Slack-style hooks; `discord.com` / `discordapp.com` hosts automatically get `{"content": "..."}` instead. A clear one-line notice prints before anything is sent, and it times out kindly after 5 seconds. This is the only network write in the product — see [PRIVACY.md](PRIVACY.md).
 
 ---
 
@@ -526,8 +565,8 @@ Your transcripts are real work — customer names, secrets, file paths. So:
 
 - **Three explicit opt-ins are the only paths that touch the network** (and each is loud about it):
   - `--ai` — sends a redacted sample to your *local* `claude` CLI for a wittier write-up
-  - `--post-webhook URL` — POSTs the redacted card to a webhook you supply
-  - `--share <platform>` — builds a URL only; opening it is your manual click
+  - `--webhook URL` (alias `--post-webhook`) — POSTs the redacted card to a webhook you supply, with a clear notice first
+  - `--share` / `--share <platform>` — builds URLs only; opening one is your manual click (or the explicit `--open`)
 
 **Prove it yourself:**
 
@@ -583,9 +622,14 @@ good-bot --import <file>            grade a Claude.ai or ChatGPT export (convers
                                     format autodetected)
 
 # Social + sharing
+good-bot --grid                     Wordle-style 7-day tone grid (🟩🟨🟥⬜) — spoiler-free,
+                                    paste anywhere (works with --demo)
+good-bot --share                    print prefilled X/Twitter + LinkedIn share links for your grid
 good-bot --share twitter            compose URL for twitter | bluesky | linkedin | reddit
-good-bot --share-open               also open the compose page in your browser
-good-bot --post-webhook <url>       opt-in: POST the (redacted) card to a Slack/Discord webhook
+good-bot --open                     with --share: open the share URL(s) in your browser
+                                    (alias: --share-open)
+good-bot --webhook <url>            opt-in: POST the (redacted) card to a Slack/Discord webhook
+                                    you supply — the only network write (alias: --post-webhook)
 good-bot --record                   asciinema v2 cast → good-bot-cast.json
 good-bot --json                     machine-readable JSON report → stdout (quotes excluded)
 good-bot --include-quotes           opt-in: include redacted exhibit quotes in --json
@@ -601,6 +645,8 @@ good-bot --statusline               one fast plain line for statusline embedding
 good-bot --statusline --no-color    same, forced plain for prompt-unsafe contexts
 
 # Team
+good-bot --team a.json b.json …     office leaderboard from 2+ teammate card files (globs work):
+                                    👑 kindest, 🥄 wooden spoon, team aggregate persona
 good-bot --leaderboard <dir>        rank a directory of good-bot-card.json exports
 
 # Quiz (no transcripts required)

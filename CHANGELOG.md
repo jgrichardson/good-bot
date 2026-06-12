@@ -8,6 +8,51 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`--grid` — the Wordle-style share grid** — a compact, spoiler-free,
+  paste-anywhere plain-text block: a `good-bot week 2026-W24 · 🧥 Mr.
+  Rogers` header, one emoji per day for the last 7 calendar days ending
+  at your most recent active day (🟩 warm / 🟨 mixed / 🟥 harsh / ⬜ no
+  data, classified from each day's warm-vs-harsh message share), and a
+  one-stat brag line ("0 f-bombs in 1.8k messages 🧯"). Plain text only
+  — never ANSI codes, never quotes, never spoiled scores — and copied
+  to your clipboard by default like the main card. `--grid --demo`
+  previews it on the same deterministic synthetic history `--lab --demo`
+  uses.
+- **`--team a.json b.json …` — the office leaderboard card** — hand it
+  2+ teammate card files (shell globs like `team-cards/*.json` expand
+  fine) and get a ranked office card built on the same
+  `normalizeCardRecord` wire formats `--compare` reads: persona, score,
+  pleases, and f-bombs per human, a 👑 crown on the kindest, a 🥄
+  wooden spoon for the harshest, and a team aggregate persona computed
+  from the average niceness. Ties break on pleases+thank-yous, kind
+  errors match `--compare` (missing/invalid/foreign files name the
+  problem and exit), and `--webhook` rides along to post the card to
+  the team channel.
+- **Bare `--share` — prefilled share-intent links** — `--share` with no
+  platform prints ready-to-click X/Twitter and LinkedIn share URLs
+  carrying your grid block + `#BeNiceToYourAI` + the repo link,
+  properly URL-encoded. Building the URLs makes zero network calls;
+  nothing is posted until you click — or pass the new `--open` flag
+  (which `--share <platform>` also honors, alongside the older
+  `--share-open` spelling). Composes with `--grid` and works with
+  `--demo`.
+- **`--webhook <url>` — the one deliberate network write, leveled up** —
+  the canonical spelling of `--post-webhook` (which stays as an alias).
+  POSTs the redacted, ANSI-stripped card as Slack-compatible
+  `{"text": …}` JSON — or `{"content": …}` automatically when the host
+  is `discord.com` / `discordapp.com` — to an incoming-webhook URL you
+  must supply explicitly every run (no stored default, ever). A clear
+  one-line notice ("Sending your card (text only, no transcripts) to
+  <host> — your own webhook") prints before sending, the timeout
+  tightened from 8s to 5s, connection errors come back human-readable
+  (including Node's empty-message `AggregateError` case), and
+  `node:https` stays lazy-required inside this single handler so no
+  other code path can reach the network stack. The payload builder is
+  pure and the transport injectable, so the tests verify the exact
+  request shape without a socket. PRIVACY.md gained a "Network features
+  (opt-in only)" section documenting the payload byte-for-byte and
+  noting the future opt-in leaderboard as not-yet-built.
+
 - **`--mcp` — good-bot as an MCP server** — run the CLI as a Model
   Context Protocol stdio server so Claude Desktop / Claude Code can call
   it as a tool mid-conversation ("how nice have I been to you lately?").

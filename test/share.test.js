@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   SHARE_PLATFORMS, resolveSharePlatform, shareText, buildShareUrl,
+  buildShareIntents,
 } = require('../niceness.js');
 
 const PERSONA = { name: 'Mr. Rogers', emoji: '🧥', tag: "Won't you be my neighbor?" };
@@ -105,4 +106,44 @@ test('buildShareUrl: URL-encoded payload is round-trip safe', () => {
   const decoded = decodeURIComponent(m[1]);
   assert.match(decoded, /M\+R&G/);
   assert.match(decoded, /special chars: \? & = \/ # %/);
+});
+
+// ---- bare --share: grid-flavored share intents ---------------------------
+
+const GRID = 'good-bot week 2026-W24 · 🧥 Mr. Rogers\n🟩🟩🟨⬜🟩🟥🟩\n0 f-bombs in 1.8k messages 🧯';
+
+test('buildShareIntents: returns exactly X/Twitter and LinkedIn', () => {
+  const intents = buildShareIntents(GRID);
+  assert.strictEqual(intents.length, 2);
+  assert.deepStrictEqual(intents.map(i => i.name), ['Twitter / X', 'LinkedIn']);
+});
+
+test('buildShareIntents: Twitter intent shape with encoded text + repo url', () => {
+  const [tw] = buildShareIntents(GRID);
+  assert.match(tw.url, /^https:\/\/twitter\.com\/intent\/tweet\?text=/);
+  assert.match(tw.url, /&url=https%3A%2F%2Fgithub\.com%2Fjgrichardson%2Fgood-bot$/);
+});
+
+test('buildShareIntents: LinkedIn share-offsite shape with encoded summary', () => {
+  const [, li] = buildShareIntents(GRID);
+  assert.match(li.url, /^https:\/\/www\.linkedin\.com\/sharing\/share-offsite\/\?url=/);
+  assert.match(li.url, /github\.com%2Fjgrichardson%2Fgood-bot/);
+  assert.match(li.url, /summary=/);
+});
+
+test('buildShareIntents: hashtag is URL-encoded, never raw', () => {
+  for (const it of buildShareIntents(GRID)) {
+    assert.match(it.url, /%23BeNiceToYourAI/);
+    assert.doesNotMatch(it.url, /#/);
+  }
+});
+
+test('buildShareIntents: grid block round-trips through decodeURIComponent', () => {
+  const [tw] = buildShareIntents(GRID);
+  const m = tw.url.match(/text=([^&]+)/);
+  assert.ok(m);
+  const decoded = decodeURIComponent(m[1]);
+  assert.match(decoded, /good-bot week 2026-W24/);
+  assert.match(decoded, /🟩🟩🟨⬜🟩🟥🟩/);
+  assert.match(decoded, /#BeNiceToYourAI/);
 });

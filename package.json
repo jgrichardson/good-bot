@@ -7,7 +7,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "smoke": "node niceness.js --demo > /dev/null && node niceness.js --scale spice --demo > /dev/null && node niceness.js --lab --demo > /dev/null && node niceness.js --vs --demo > /dev/null && node niceness.js --statusline --demo --no-color > /dev/null && node niceness.js --help > /dev/null && echo ok",
+    "smoke": "node niceness.js --demo > /dev/null && node niceness.js --scale spice --demo > /dev/null && node niceness.js --lab --demo > /dev/null && node niceness.js --vs --demo > /dev/null && node niceness.js --grid --demo --no-copy > /dev/null && node niceness.js --statusline --demo --no-color > /dev/null && node niceness.js --help > /dev/null && echo ok",
     "prepublishOnly": "npm test && npm run smoke"
   },
   "keywords": [
