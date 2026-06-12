@@ -129,6 +129,60 @@ For Instagram Stories, Reels, TikTok, and Threads, the poster is already the rig
 
 ---
 
+## 🔌 MCP server
+
+Let Claude grade you mid-conversation: `good-bot --mcp` runs the CLI as a **Model Context Protocol stdio server** — hand-rolled JSON-RPC 2.0, zero dependencies, same 100% local engine. Claude Desktop and Claude Code can then call good-bot as a tool.
+
+**Claude Code** (one command):
+
+```bash
+claude mcp add good-bot -- npx github:jgrichardson/good-bot --mcp
+```
+
+**Claude Desktop** — add this to your `claude_desktop_config.json` (Settings → Developer → Edit Config):
+
+```json
+{ "mcpServers": { "good-bot": { "command": "npx", "args": ["github:jgrichardson/good-bot", "--mcp"] } } }
+```
+
+Three tools, all read-only, all local:
+
+| Tool | Returns |
+|---|---|
+| `niceness_report` | your plain-text report card (persona, score bar, redacted exhibits, stats) |
+| `niceness_stats` | the `--json` object — persona, 0–100 score, totals, achievements, sources, date range |
+| `niceness_roast` | the 100% local roast of your AI manners (aggregate numbers only, never quotes) |
+
+Then just ask: *"how nice have I been to you lately?"* — and Claude pulls your actual receipts. The server reads the same local transcripts as the CLI, sends nothing anywhere, writes nothing, and `--mcp --demo` serves canned demo data if you want to try it without history.
+
+---
+
+## 📟 Statusline
+
+Your niceness, in your prompt, all day:
+
+```bash
+good-bot --statusline              # → 🧥 Mr. Rogers · 92/100 · 🟩🟩🟨
+good-bot --statusline --no-color   # force plain output for prompt-unsafe contexts
+```
+
+One line, built for embedding — and **fast**: the score is cached in `~/.good-bot/statusline.json` with a 6-hour TTL, and a cache hit prints without touching a single transcript file (<150ms, node startup included). Stale or missing cache recomputes once, re-caches, and you're back on the fast path.
+
+**Claude Code statusline** — in your `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y @jgrciv/good-bot --statusline --no-color"
+  }
+}
+```
+
+(For the snappiest prompt, `npm i -g @jgrciv/good-bot` once and use `"command": "good-bot --statusline --no-color"` — that skips npx resolution entirely.) Works just as well in tmux `status-right`, starship `custom` modules, or any shell prompt: it's only ever one plain line on stdout.
+
+---
+
 ## 🧩 Supported AI tools
 
 `good-bot` understands the local histories of **5 AI coding assistants** out of the box, plus three more via export+import:
@@ -539,6 +593,12 @@ good-bot --export json              good-bot-card.json (for --compare later)
 good-bot --compare a.json b.json    head-to-head: whose AI relationship wins?
 good-bot --compare theirs.json      one file = them vs. YOUR fresh local result
 good-bot --me <name>                label the card
+
+# Integrations
+good-bot --mcp                      run as an MCP stdio server for Claude Desktop / Claude Code
+                                    (tools: niceness_report, niceness_stats, niceness_roast)
+good-bot --statusline               one fast plain line for statusline embedding (6h cache)
+good-bot --statusline --no-color    same, forced plain for prompt-unsafe contexts
 
 # Team
 good-bot --leaderboard <dir>        rank a directory of good-bot-card.json exports

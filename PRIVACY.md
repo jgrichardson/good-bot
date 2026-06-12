@@ -14,7 +14,8 @@
 - ❌ No network requests. It does not phone home, ping a server, or call any API or LLM.
 - ❌ No telemetry, no analytics, no tracking pixels, no Google Analytics, no Plausible, no anything.
 - ❌ No data collection. Nothing is uploaded, stored remotely, or shared.
-- The only file the CLI writes is `my-niceness-card.txt` in your current directory (your finished card), plus optionally the `--svg`, `--wrapped`, `--record`, and `--export json` outputs you explicitly asked for.
+- The only file the CLI writes is `my-niceness-card.txt` in your current directory (your finished card), plus optionally the `--svg`, `--wrapped`, `--record`, and `--export json` outputs you explicitly asked for. Two small local state files live under `~/.good-bot/`: `history.json` (your own past run scores, for `--streak`) and `statusline.json` (a 6-hour cache of persona + score so `--statusline` is fast). Both contain only aggregate numbers and persona names — never transcript text — and both stay on your machine.
+- The `--mcp` mode is equally local: it speaks the Model Context Protocol over **stdio only** (stdin/stdout with the MCP client on your machine, e.g. Claude Desktop or Claude Code). It opens no sockets, makes no network calls, writes no files, and its three tools (`niceness_report`, `niceness_stats`, `niceness_roast`) are strictly read-only over the same local transcripts listed above.
 
 By default, **your messages never leave your machine.** The CLI confirms this at the end of every local run:
 

@@ -8,6 +8,38 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`--mcp` — good-bot as an MCP server** — run the CLI as a Model
+  Context Protocol stdio server so Claude Desktop / Claude Code can call
+  it as a tool mid-conversation ("how nice have I been to you lately?").
+  The protocol is implemented by hand in the new zero-dependency `mcp.js`
+  (newline-delimited JSON-RPC 2.0 over stdio): `initialize` echoes the
+  client's protocolVersion (falling back to `2024-11-05`), advertises
+  `capabilities: {tools:{}}` + serverInfo, `notifications/*` are ignored,
+  `tools/list` / `tools/call` / `ping` are served, and unknown methods,
+  unknown tools, and unparseable frames answer with proper JSON-RPC
+  errors instead of crashing the session (a throwing tool comes back as
+  an in-band `isError: true` result). Three tools, all read-only, all
+  100% local: `niceness_report` (the plain-text card, ANSI stripped),
+  `niceness_stats` (the `--json` object as JSON text — never any
+  quotes), and `niceness_roast` (the local roast). stdout carries
+  protocol frames ONLY (diagnostics go to stderr), the transcript scan
+  is shared across calls with a 5-minute cache, and `--mcp --demo`
+  serves the canned demo stats — which is also how the protocol tests
+  drive a real spawned server. README has the `claude mcp add` one-liner
+  and the `claude_desktop_config.json` snippet.
+- **`--statusline` — niceness in your prompt** — prints exactly ONE
+  plain line built for statusline embedding ("🧥 Mr. Rogers · 92/100 ·
+  🟩🟩🟨", with a 3-segment 🟩🟨🟥 meter of your score) and nothing
+  else: no clipboard, no card file, no history entry. Built to be FAST:
+  the computed result is cached in `~/.good-bot/statusline.json` with a
+  6-hour TTL, and a cache hit prints without reading a single transcript
+  (<150ms including node startup); stale/missing/mismatched (the cache
+  is keyed by scale + source) recomputes once and re-caches. Add
+  `--no-color` for prompt-unsafe contexts; missing transcripts degrade
+  to a friendly one-liner with exit 0 (a broken prompt segment is worse
+  than a missing score); `--statusline --demo` previews the line on
+  canned stats without touching the cache. README shows the Claude Code
+  `settings.json` statusLine config plus tmux/starship notes.
 - **`--vs` — Cross-domain manners** — are you only nice to things that
   talk back? A new comparison card grades the same you across domains:
   your AI transcripts vs your **git commit messages** vs — strictly

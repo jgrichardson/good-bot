@@ -14,6 +14,8 @@
 //   good-bot --roast                   # a 100% local roast of your AI manners (no AI, just receipts)
 //   good-bot --svg                     # write a shareable image card (SVG, + PNG if possible)
 //   good-bot --badge                   # print a README/profile badge for your rank
+//   good-bot --mcp                     # MCP stdio server for Claude Desktop / Claude Code
+//   good-bot --statusline              # one fast plain line for statusline embedding (6h cache)
 //   good-bot --scale spice             # alternate ladders (try --demo to see one)
 //   good-bot --source codex            # pick a tool: claude | codex | gemini | continue | aider | all (default: all found)
 //   good-bot --import conversations.json   # grade a Claude Desktop/web/Cowork data export
@@ -2602,6 +2604,225 @@ function renderStreakReport(hist) {
   return lines.join('\n');
 }
 
+// ---- statusline (--statusline) -------------------------------------------
+// One plain line for statusline embedding (Claude Code statusLine, tmux,
+// shell prompts): "🧥 Mr. Rogers · 92/100 · 🟩🟩🟨". Speed is the contract:
+// the computed result is cached in ~/.good-bot/statusline.json with a 6h TTL,
+// and a cache hit never touches a single transcript file.
+
+const STATUSLINE_CACHE_PATH = path.join(os.homedir(), '.good-bot', 'statusline.json');
+const STATUSLINE_TTL_MS = 6 * 60 * 60 * 1000;   // 6 hours
+const METER_SEGMENTS = 3;
+
+function stripAnsi(s) { return String(s).replace(/\x1b\[[0-9;]*m/g, ''); }
+
+// 3-segment emoji meter of niceness: 92 → 🟩🟩🟨, 50 → 🟩🟨🟥, 10 → 🟥🟥🟥.
+// Emoji, not ANSI, so it reads in any statusline without color support.
+function nicenessMeter(niceness) {
+  const f = (clamp(niceness == null ? 50 : niceness, 0, 100) / 100) * METER_SEGMENTS;
+  let out = '';
+  for (let i = 0; i < METER_SEGMENTS; i++) {
+    const seg = clamp(f - i, 0, 1);
+    out += seg >= 0.99 ? '🟩' : seg >= 0.34 ? '🟨' : '🟥';
+  }
+  return out;
+}
+
+// `persona` only needs { name, emoji } — a cache entry qualifies. Color rides
+// on the usual TTY detection; --no-color forces plain for prompt-unsafe spots.
+function buildStatuslineLine(persona, niceness, opts) {
+  opts = opts || {};
+  const n = Math.round(clamp(niceness == null ? 50 : niceness, 0, 100));
+  const name = opts.noColor ? persona.name : color(persona.name, '1');
+  return `${persona.emoji} ${name} · ${n}/100 · ${nicenessMeter(n)}`;
+}
+
+// Cache read: null on missing/corrupt/expired/mismatched key — callers treat
+// every null the same way (recompute). `key` is { scale, source } so changing
+// either flag never serves a stale persona from the other ladder.
+function readStatuslineCache(key, file) {
+  file = file || STATUSLINE_CACHE_PATH;
+  let c;
+  try { c = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
+  if (!c || c.v !== 1 || !c.persona || typeof c.persona.name !== 'string' ||
+      typeof c.niceness !== 'number' || !Number.isFinite(c.ts)) return null;
+  if (key && (c.scale !== key.scale || c.source !== key.source)) return null;
+  if (Date.now() - c.ts >= STATUSLINE_TTL_MS) return null;
+  return c;
+}
+
+function writeStatuslineCache(data, file) {
+  file = file || STATUSLINE_CACHE_PATH;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// The --statusline flow. stdout gets EXACTLY one line (statusline consumers
+// concatenate everything they're given); no clipboard, no card file, no
+// history entry, no chatter. A fresh cache is the fast path (<150ms target);
+// stale/missing recomputes from the transcripts and re-caches.
+function runStatusline(argv) {
+  const noColor = argv.includes('--no-color');
+  if (argv.includes('--demo')) {
+    const stats = DEMO_ACHIEVEMENT_STATS;
+    process.stdout.write(buildStatuslineLine(personaForNiceness(stats.niceness), stats.niceness, { noColor }) + '\n');
+    return;
+  }
+  const source = (argv.includes('--source') && argVal('--source')) || 'all';
+  const cached = readStatuslineCache({ scale: SCALE_NAME, source });
+  if (cached) {
+    process.stdout.write(buildStatuslineLine(cached.persona, cached.niceness, { noColor }) + '\n');
+    return;
+  }
+  const r = collectMessages(source);
+  if (!r.items.length) {
+    // Stay statusline-safe: one friendly line, exit 0 — a broken prompt
+    // segment is worse than a missing score.
+    process.stdout.write('🤖 good-bot · no transcripts yet\n');
+    return;
+  }
+  const analysis = analyze(r.items);
+  const persona = pickPersona(analysis.sig);
+  const niceness = Math.round(analysis.niceness);
+  writeStatuslineCache({
+    v: 1, ts: Date.now(), scale: SCALE_NAME, source,
+    persona: { name: persona.name, emoji: persona.emoji },
+    niceness,
+  });
+  process.stdout.write(buildStatuslineLine(persona, niceness, { noColor }) + '\n');
+}
+
+// ---- MCP server (--mcp) ---------------------------------------------------
+// good-bot as a Model Context Protocol stdio server, so Claude Desktop /
+// Claude Code can call it as a tool. The JSON-RPC framing is hand-rolled in
+// mcp.js (zero deps); this block only defines the three tools. All three are
+// read-only and 100% local: no clipboard, no files written, no history entry,
+// no network — and stdout carries protocol frames ONLY (stderr is for
+// diagnostics). `--mcp --demo` serves the canned demo stats instead of
+// scanning transcripts, which is also how the tests exercise the protocol.
+
+const MCP_ANALYSIS_TTL_MS = 5 * 60 * 1000;   // re-scan at most every 5 minutes
+const MCP_DEMO_SPAN = 'Apr 21, 2026 → Jun 2, 2026';
+
+// Demo snapshot: the same canned saintly stats --json --demo uses, plus the
+// spicy roast stats so niceness_roast previews the fun flavor.
+function mcpDemoSnapshot() {
+  const stats = DEMO_ACHIEVEMENT_STATS;
+  const persona = personaForNiceness(stats.niceness);
+  let DEMO = {};
+  try { DEMO = require('./demo-data.js')[SCALE_NAME] || {}; } catch (_) {}
+  const d = DEMO[persona.name];
+  return {
+    persona,
+    niceness: stats.niceness,
+    stats: { messages: stats.messages, pleases: stats.pleases, thanks: stats.thanks, fbombs: stats.fbombs, shouts: stats.shouts, shoutWords: 0 },
+    apologies: stats.apologies,
+    achievements: evaluateAchievements(stats),
+    exhibits: d ? d[1] : [],
+    roastStats: DEMO_ROAST_STATS.spicy,
+    roastPersona: personaForNiceness(15),
+    counts: { demo: stats.messages },
+    span: MCP_DEMO_SPAN,
+    dateRange: { first: '2026-04-21', last: '2026-06-02', label: MCP_DEMO_SPAN },
+  };
+}
+
+// Build the three MCP tools. The transcript walk is shared and cached for
+// MCP_ANALYSIS_TTL_MS so a model calling report → stats → roast in one breath
+// pays for a single scan.
+function buildMcpTools(opts) {
+  opts = opts || {};
+  let cache = null, cacheAt = 0;
+  function snapshot() {
+    if (opts.demo) return mcpDemoSnapshot();
+    if (cache && Date.now() - cacheAt < MCP_ANALYSIS_TTL_MS) return cache;
+    const r = collectMessages(opts.source || 'all');
+    if (!r.items.length) {
+      throw new Error('No local AI-assistant transcripts found on this machine. ' +
+        'good-bot reads Claude Code, Codex, Gemini CLI, Continue.dev, and Aider history — see `npx @jgrciv/good-bot --help`.');
+    }
+    const analysis = analyze(r.items);
+    const { first, last } = spanOf(r.items);
+    const persona = pickPersona(analysis.sig);
+    const span = dateSpan(first, last);
+    cache = {
+      persona,
+      niceness: Math.round(analysis.niceness),
+      stats: analysis.stats,
+      apologies: analysis.scored.reduce((acc, s) => acc + (s.apolog || 0), 0),
+      achievements: evaluateAchievements(
+        computeAchievementStats(analysis, { sources: Object.keys(r.counts).length || 1 })),
+      exhibits: localExhibits(analysis.scored, SCALE.indexOf(persona)),
+      roastStats: computeRoastStats(analysis),
+      roastPersona: persona,
+      counts: r.counts,
+      span,
+      dateRange: first && last ? { first, last, label: span } : null,
+    };
+    cacheAt = Date.now();
+    return cache;
+  }
+  return [
+    {
+      name: 'niceness_report',
+      description: 'Grade how nice this user is to their AI from their local AI-tool transcripts ' +
+        '(Claude Code, Codex, Gemini CLI, Continue.dev, Aider) and return the plain-text report card: ' +
+        'persona, niceness bar, redacted exhibit quotes, and aggregate stats. 100% local, read-only.',
+      inputSchema: { type: 'object', properties: {} },
+      run() {
+        const s = snapshot();
+        return stripAnsi(renderCard(s.persona, s.persona.tag, s.persona.blurb, s.exhibits, s.stats, s.span, s.achievements));
+      },
+    },
+    {
+      name: 'niceness_stats',
+      description: 'Machine-readable niceness stats as a JSON object: persona (id, name, emoji), ' +
+        '0-100 niceness score with ladder rank, totals (messages, pleases, thank-yous, f-bombs, ' +
+        'ALL-CAPS, apologies), unlocked achievements, sources, and date range. ' +
+        'No transcript quotes are ever included. 100% local, read-only.',
+      inputSchema: { type: 'object', properties: {} },
+      run() {
+        const s = snapshot();
+        const rep = buildJsonReport({
+          persona: s.persona, niceness: s.niceness, stats: s.stats,
+          apologies: s.apologies, achievements: s.achievements,
+          sources: s.counts, dateRange: s.dateRange,
+        });
+        return JSON.stringify(rep, null, 2);
+      },
+    },
+    {
+      name: 'niceness_roast',
+      description: "A 100% local comedy roast of the user's AI manners — deterministic jokes keyed " +
+        'to their real aggregate stats (f-bombs, please droughts, ALL-CAPS, late-night tone). ' +
+        'Aggregate numbers only, never quotes from transcripts. Read-only.',
+      inputSchema: { type: 'object', properties: {} },
+      run() {
+        const s = snapshot();
+        const roast = buildRoast(s.roastStats);
+        return stripAnsi(renderRoastCard(s.roastPersona, roast, s.roastStats, s.span));
+      },
+    },
+  ];
+}
+
+// Start the stdio loop. mcp.js is lazy-required so the 99% of runs that never
+// pass --mcp don't load it.
+function runMcpServer(opts) {
+  const { startMcpStdioServer } = require('./mcp.js');
+  process.stderr.write('good-bot MCP server on stdio · tools: niceness_report, niceness_stats, niceness_roast' +
+    (opts && opts.demo ? ' · demo data' : '') + ' · 100% local, read-only\n');
+  startMcpStdioServer({
+    serverInfo: { name: 'good-bot', version: PKG_VERSION },
+    tools: buildMcpTools(opts),
+  });
+}
+
 // ---- social share composers ---------------------------------------------
 // Build a pre-filled compose URL for a social platform. Each builder takes
 // (text, url) and returns the platform's intent URL. Aliases (x→twitter,
@@ -2711,6 +2932,12 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --me <name>         label the card (for export + compare display)
   good-bot --post-webhook URL  opt-in: POST the (redacted) card to a Slack/Discord webhook
   good-bot --record            write good-bot-cast.json (asciinema v2 — embed anywhere)
+  good-bot --mcp               run as an MCP stdio server for Claude Desktop / Claude Code
+                               (tools: niceness_report, niceness_stats, niceness_roast — all
+                               read-only, all local; honors --demo for canned data)
+  good-bot --statusline        one fast plain line for statusline embedding, e.g.
+                               "🧥 Mr. Rogers · 92/100 · 🟩🟩🟨" (6h cache in ~/.good-bot;
+                               add --no-color for prompt-unsafe contexts)
   good-bot --leaderboard DIR   rank a directory of good-bot-card.json team exports
   good-bot --audit             run with all network APIs blocked + print attestation
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
@@ -2732,6 +2959,14 @@ only a redacted sample to your own local 'claude'.`;
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP + '\n'); return; }
+  // --mcp and --statusline are handled BEFORE the --demo block so that
+  // `--mcp --demo` serves demo-backed tools and `--statusline --demo` prints
+  // the demo line — neither should fall into the every-rank gallery.
+  if (argv.includes('--mcp')) {
+    runMcpServer({ demo: argv.includes('--demo'), source: (argv.includes('--source') && argVal('--source')) || 'all' });
+    return;
+  }
+  if (argv.includes('--statusline')) { runStatusline(argv); return; }
   if (argv.includes('--demo')) {
     // --json --demo emits a real machine-readable card built from the same
     // canned saintly stats the achievements demo uses — handy for test-driving
@@ -3250,6 +3485,10 @@ module.exports = {
   achievementCardLines, renderAchievementGallery,
   roastSeed, computeRoastStats, isSaintly, roastBucketIds, buildRoast,
   renderRoastCard, DEMO_ROAST_STATS,
+  personaForNiceness,
+  STATUSLINE_CACHE_PATH, STATUSLINE_TTL_MS, nicenessMeter, buildStatuslineLine,
+  readStatuslineCache, writeStatuslineCache,
+  buildMcpTools,
   renderLab,
   gitAuthorIdentity, collectGitCommits, resolveGitDirs,
   stripZshHistoryLine, shellCountsFromText, shellHistoryCounts,
