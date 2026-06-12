@@ -4,6 +4,19 @@ All notable changes to `good-bot` land here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Achievements system** — `--achievements` opens a gallery of 24
+  unlockable badges (new `achievements.js` module) computed 100% locally
+  from stats the engine already produces: 💯 Centurion of Courtesy,
+  🧯 Asbestos Keyboard, 🦉 3am Confessions, 📈 Redemption Arc, and more,
+  tiered 🥉 common → 🥈 rare → 🌟 legendary (legendary stays `🔒 ???`
+  until earned — no spoilers). The report card shows your three rarest
+  unlocked badges with a `+N more` teaser, and `--achievements --demo`
+  previews the gallery on canned demo stats.
+
 ## [0.3.2] — 2026-06-06
 
 ### Added
@@ -112,5 +125,6 @@ set: Claude Code + Codex ingestion, eight ranking scales, `--ai` opt-in,
 the Claude Code plugin (`/goodbot` slash command), and the npm `bin`
 entry. ([initial commit](https://github.com/jgrichardson/good-bot/commit/bd2aeda))
 
+[Unreleased]: https://github.com/jgrichardson/good-bot/compare/v0.3.2...HEAD
 [0.3.0]: https://github.com/jgrichardson/good-bot/releases/tag/v0.3.0
 [0.2.0]: https://github.com/jgrichardson/good-bot/releases/tag/v0.2.0

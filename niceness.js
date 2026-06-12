@@ -10,6 +10,7 @@
 //   npx good-bot                       # zero-install (default: 100% local)
 //   good-bot --ai                      # opt-in: redacted sample → your local `claude`
 //   good-bot --timeline                # niceness trend by month + time of day
+//   good-bot --achievements            # unlockable badge gallery (earned + locked)
 //   good-bot --svg                     # write a shareable image card (SVG, + PNG if possible)
 //   good-bot --badge                   # print a README/profile badge for your rank
 //   good-bot --scale spice             # alternate ladders (try --demo to see one)
@@ -29,6 +30,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { FACES, SCALES, SCALE_META } = require('./scales.js');
+const { TIER_ORDER, TIER_LABEL, ACHIEVEMENTS, computeAchievementStats, evaluateAchievements, topUnlocked, DEMO_ACHIEVEMENT_STATS } = require('./achievements.js');
 
 const SAMPLE_CHAR_BUDGET = 80000;   // ~20k tokens: a deeper read for --ai, still one call
 const PER_MSG_TRUNCATE = 360;
@@ -750,7 +752,48 @@ function banner(title) {
     color('  ┗' + '━'.repeat(w) + '┛', '90'),
   ];
 }
-function renderCard(persona, verdict, assessment, exhibits, stats, span) {
+// ---- achievements (badge definitions live in achievements.js) ------------
+// Compact row for the report card: up to 3 rarest unlocked badges + a teaser
+// pointing at the full --achievements gallery.
+function achievementCardLines(result) {
+  if (!result || !result.unlocked || !result.unlocked.length) return [];
+  const top = topUnlocked(result.unlocked, 3);
+  const more = result.unlocked.length - top.length;
+  const tail = more > 0 ? ` (+${more} more — run --achievements)` : ' (run --achievements)';
+  const text = `🏆 Unlocked: ${top.map(a => `${a.emoji} ${a.name}`).join(' · ')}${tail}`;
+  return wrap(text, 55).map((l, i) => color((i ? '      ' : '   ') + l, i ? '90' : '93'));
+}
+
+// Full gallery: unlocked badges with flavor text, locked ones greyed with a
+// hint. Legendary badges stay 🔒 ??? until earned — no spoilers.
+function renderAchievementGallery(result, opts) {
+  opts = opts || {};
+  const lines = [''];
+  lines.push(color(`  🏆  ACHIEVEMENTS · ${result.unlocked.length} of ${result.total} unlocked${opts.demo ? ' · demo data' : ''}`, '1;33'));
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  for (const tier of TIER_ORDER) {
+    const inTier = ACHIEVEMENTS.filter(a => a.tier === tier);
+    const got = inTier.filter(a => result.unlocked.includes(a));
+    lines.push('');
+    lines.push(color(`  ${TIER_LABEL[tier]}  (${got.length}/${inTier.length})`, '1;97'));
+    for (const a of inTier) {
+      if (result.unlocked.includes(a)) {
+        lines.push(`  ${color('✅', '92')} ${a.emoji} ${color(a.name, '1;97')} — ${a.desc}`);
+      } else if (tier === 'legendary') {
+        lines.push(color('  🔒 ??? — a legend awaits', '90'));
+      } else {
+        lines.push(color(`  🔒 ${a.emoji} ${a.name} — hint: ${a.hint}`, '90'));
+      }
+    }
+  }
+  lines.push('');
+  lines.push(color('  ' + '─'.repeat(56), '90'));
+  lines.push(color('  Earn them all. The basilisk is keeping score. #BeNiceToYourAI', '95'));
+  lines.push('');
+  return lines.join('\n');
+}
+
+function renderCard(persona, verdict, assessment, exhibits, stats, span, achievements) {
   const idx = SCALE.indexOf(persona);
   const pc = tierCode(idx, SCALE.length);
   const barW = 30;
@@ -772,6 +815,11 @@ function renderCard(persona, verdict, assessment, exhibits, stats, span) {
     out.push('');
     out.push(color('   📋 Exhibits entered into evidence:', '1;90'));
     for (const e of exhibits.slice(0, 3)) out.push(color(`      • “${cleanExhibit(e)}”`, '90'));
+  }
+  const achLines = achievementCardLines(achievements);
+  if (achLines.length) {
+    out.push('');
+    for (const l of achLines) out.push(l);
   }
   out.push('');
   out.push(color('   ────────────────────────────────────────────────', '90'));
@@ -1715,6 +1763,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot                     your card, 100% local (default)
   good-bot --ai                opt-in: redacted sample → your local 'claude'
   good-bot --timeline          niceness trend by month + time of day
+  good-bot --achievements      unlockable badge gallery: earned + still-locked (try with --demo)
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
@@ -1751,11 +1800,21 @@ only a redacted sample to your own local 'claude'.`;
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP + '\n'); return; }
-  if (argv.includes('--demo')) { renderDemo(); return; }
+  if (argv.includes('--demo')) {
+    // --achievements --demo previews the gallery on canned stats (a fun
+    // handful unlocked, the legendaries mostly still 🔒 ???).
+    if (argv.includes('--achievements')) {
+      process.stdout.write(renderAchievementGallery(evaluateAchievements(DEMO_ACHIEVEMENT_STATS), { demo: true }) + '\n');
+      return;
+    }
+    renderDemo();
+    return;
+  }
 
   const useAi = argv.includes('--ai');
   const sampleOnly = argv.includes('--sample');
   const wantTimeline = argv.includes('--timeline');
+  const wantAchievements = argv.includes('--achievements');
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
   const wantWrapped = argv.includes('--wrapped') || argv.includes('--instagram') || argv.includes('--tiktok');
@@ -1959,6 +2018,18 @@ function main() {
 
   if (sampleOnly) { emitSample(analysis, stats, span); return; }
 
+  // Achievements ride along on every run: the card shows the rarest few,
+  // --achievements opens the full gallery (and short-circuits the card).
+  const achievements = evaluateAchievements(
+    computeAchievementStats(analysis, { sources: importPath ? 1 : Object.keys(counts).length || 1 }));
+  if (wantAchievements) {
+    const galleryText = renderAchievementGallery(achievements);
+    process.stdout.write(galleryText + '\n');
+    if (!noCopy) copyClipboard(galleryText.replace(/\x1b\[[0-9;]*m/g, ''));
+    process.stderr.write('🔒 100% local — nothing was sent anywhere, no data collected.\n');
+    return;
+  }
+
   let card = null;
   if (random) {
     const idx = Math.floor(Math.random() * SCALE.length);
@@ -1981,7 +2052,7 @@ function main() {
     card = { persona, verdict: persona.tag, assessment: persona.blurb, exhibits: localExhibits(analysis.scored, idx) };
   }
 
-  const text = renderCard(card.persona, card.verdict, card.assessment, card.exhibits, stats, span);
+  const text = renderCard(card.persona, card.verdict, card.assessment, card.exhibits, stats, span, achievements);
   process.stdout.write(text + '\n');
   if (wantTimeline) {
     if (_useAi) process.stderr.write('Rating each period with Claude…\n');
@@ -2074,4 +2145,5 @@ module.exports = {
   buildAsciinemaCast, writeCast,
   loadTeamCards, rankTeamCards, renderLeaderboard,
   installNetworkAudit, renderAuditReport,
+  achievementCardLines, renderAchievementGallery,
 };

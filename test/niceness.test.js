@@ -200,6 +200,113 @@ test('sparkline maps a series into block glyphs of equal length', () => {
   assert.equal(s[4], '█');
 });
 
+// ---- achievements ---------------------------------------------------------
+const {
+  ACHIEVEMENTS, evaluateAchievements, computeAchievementStats, topUnlocked,
+  DEMO_ACHIEVEMENT_STATS,
+} = require('../achievements.js');
+const { renderAchievementGallery } = require('../niceness.js');
+
+// Synthetic stats snapshot with everything locked; override per test.
+function fakeStats(over) {
+  return Object.assign({
+    messages: 0, pleases: 0, thanks: 0, fbombs: 0, shouts: 0, apologies: 0,
+    niceness: 50, avgLen: 100,
+    nightMessages: 0, nightNiceness: 50, weekendMessages: 0,
+    daysActive: 0, dayStreak: 0, maxDayMessages: 0,
+    spanDays: 0, timestamped: 0,
+    firstHalfNiceness: 50, secondHalfNiceness: 50,
+    sources: 1,
+  }, over || {});
+}
+const byId = id => ACHIEVEMENTS.find(a => a.id === id);
+const has = (stats, id) => evaluateAchievements(stats).unlocked.some(a => a.id === id);
+
+test('every achievement is well-formed with a unique id', () => {
+  const ids = new Set();
+  for (const a of ACHIEVEMENTS) {
+    assert.ok(a.id && a.emoji && a.name && a.desc && a.hint, `missing fields on ${a.id}`);
+    assert.ok(['common', 'rare', 'legendary'].includes(a.tier), `bad tier on ${a.id}`);
+    assert.equal(typeof a.unlock, 'function');
+    assert.ok(!ids.has(a.id), `duplicate id ${a.id}`);
+    ids.add(a.id);
+  }
+  assert.ok(ACHIEVEMENTS.length >= 16 && ACHIEVEMENTS.length <= 24);
+});
+
+test('unlock predicates respect their boundaries', () => {
+  // centurion: exactly 100 pleases is in; 99 is out
+  assert.equal(has(fakeStats({ pleases: 99 }), 'centurion'), false);
+  assert.equal(has(fakeStats({ pleases: 100 }), 'centurion'), true);
+  // asbestos: clean mouth AND enough history
+  assert.equal(has(fakeStats({ fbombs: 0, messages: 200 }), 'asbestos'), true);
+  assert.equal(has(fakeStats({ fbombs: 0, messages: 199 }), 'asbestos'), false);
+  assert.equal(has(fakeStats({ fbombs: 1, messages: 500 }), 'asbestos'), false);
+  // owl: politest after midnight needs volume + a real margin
+  assert.equal(has(fakeStats({ nightMessages: 25, nightNiceness: 55, niceness: 50 }), 'owl'), true);
+  assert.equal(has(fakeStats({ nightMessages: 25, nightNiceness: 54, niceness: 50 }), 'owl'), false);
+  assert.equal(has(fakeStats({ nightMessages: 24, nightNiceness: 90, niceness: 50 }), 'owl'), false);
+  // redemption / villain arcs are mirror images
+  assert.equal(has(fakeStats({ timestamped: 100, firstHalfNiceness: 50, secondHalfNiceness: 56 }), 'redemption'), true);
+  assert.equal(has(fakeStats({ timestamped: 100, firstHalfNiceness: 50, secondHalfNiceness: 55 }), 'redemption'), false);
+  assert.equal(has(fakeStats({ timestamped: 100, firstHalfNiceness: 50, secondHalfNiceness: 44 }), 'villain-arc'), true);
+  assert.equal(has(fakeStats({ timestamped: 99, firstHalfNiceness: 50, secondHalfNiceness: 44 }), 'villain-arc'), false);
+  // polyglot needs >1 tool AND actual niceness
+  assert.equal(has(fakeStats({ sources: 2, niceness: 60 }), 'polyglot'), true);
+  assert.equal(has(fakeStats({ sources: 1, niceness: 99 }), 'polyglot'), false);
+  assert.equal(has(fakeStats({ sources: 2, niceness: 59 }), 'polyglot'), false);
+  // saint is legendary-hard
+  assert.equal(has(fakeStats({ niceness: 90, messages: 500 }), 'saint'), true);
+  assert.equal(has(fakeStats({ niceness: 89, messages: 5000 }), 'saint'), false);
+});
+
+test('evaluateAchievements partitions every badge into unlocked or locked', () => {
+  const r = evaluateAchievements(fakeStats({ messages: 1, pleases: 1 }));
+  assert.equal(r.unlocked.length + r.locked.length, r.total);
+  assert.equal(r.total, ACHIEVEMENTS.length);
+  assert.ok(r.unlocked.some(a => a.id === 'first-contact'));
+});
+
+test('topUnlocked ranks legendary above rare above common', () => {
+  const picks = topUnlocked([byId('first-contact'), byId('centurion'), byId('saint')], 2);
+  assert.equal(picks[0].id, 'saint');
+  assert.equal(picks[1].id, 'centurion');
+});
+
+test('computeAchievementStats derives calendar shape from scored records', () => {
+  const items = [];
+  // 3 consecutive days, with a 3am Saturday burst
+  for (let i = 0; i < 30; i++) items.push({ text: 'thanks, please keep going!', ts: '2026-06-05T10:00:00', project: null });   // Friday
+  for (let i = 0; i < 30; i++) items.push({ text: 'thank you so much!', ts: '2026-06-06T03:00:00', project: null });           // Saturday 3am
+  for (let i = 0; i < 30; i++) items.push({ text: 'please fix the test', ts: '2026-06-07T15:00:00', project: null });          // Sunday
+  const s = computeAchievementStats(analyze(items), { sources: 2 });
+  assert.equal(s.messages, 90);
+  assert.equal(s.nightMessages, 30);
+  assert.equal(s.weekendMessages, 60);
+  assert.equal(s.daysActive, 3);
+  assert.equal(s.dayStreak, 3);
+  assert.equal(s.maxDayMessages, 30);
+  assert.equal(s.sources, 2);
+  assert.ok(s.spanDays >= 2 && s.spanDays < 3);
+});
+
+test('demo stats unlock a fun handful including the teaser badges', () => {
+  const r = evaluateAchievements(DEMO_ACHIEVEMENT_STATS);
+  assert.ok(r.unlocked.length >= 8);
+  assert.ok(r.unlocked.some(a => a.id === 'centurion'));
+  assert.ok(r.unlocked.some(a => a.id === 'asbestos'));
+  assert.ok(r.locked.length >= 3, 'demo should leave something to chase');
+});
+
+test('gallery hides locked legendaries behind ??? but names locked rares', () => {
+  const r = evaluateAchievements(fakeStats());   // everything locked
+  const out = renderAchievementGallery(r);
+  assert.match(out, /\?\?\? — a legend awaits/);
+  assert.ok(!out.includes('Certified Saint'), 'locked legendary name must not leak');
+  assert.ok(out.includes('Centurion of Courtesy'), 'locked rare shows name + hint');
+  assert.match(out, /0 of \d+ unlocked/);
+});
+
 // ---- ladders ------------------------------------------------------------
 test('every scale is non-empty and well-formed', () => {
   for (const scale of Object.values(SCALES)) {

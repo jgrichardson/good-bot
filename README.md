@@ -306,6 +306,24 @@ Lets anyone play, even teammates who don't use AI tools yet. Composes with every
 
 ---
 
+## 🏆 Achievements
+
+```bash
+good-bot --achievements          # the full badge gallery: unlocked + locked
+good-bot --achievements --demo   # preview the gallery on demo data
+```
+
+24 unlockable badges, tiered 🥉 common → 🥈 rare → 🌟 legendary, computed 100% locally from stats you've already earned. A taste:
+
+- 💯 **Centurion of Courtesy** — say please 100 times
+- 🧯 **Asbestos Keyboard** — zero f-bombs across 200+ messages
+- 🦉 **3am Confessions** — you're politest after midnight
+- 📈 **Redemption Arc** — measurably nicer over time
+
+Your rarest unlocked badges appear on the report card automatically; the gallery shows everything else greyed out with a hint. Legendary badges stay `🔒 ???` until you earn them — no spoilers.
+
+---
+
 ## 📈 Watch your glow-up
 
 ```bash
@@ -388,6 +406,7 @@ Full details: [PRIVACY.md](PRIVACY.md). The whole engine is one short dependency
 good-bot                            your card, 100% local (default)
 good-bot --ai                       opt-in: redacted sample → your local 'claude'
 good-bot --timeline                 niceness trend by month + time of day
+good-bot --achievements             unlockable badge gallery (earned + locked)
 good-bot --wrapped                  Year-in-AI poster (1080×1920 PNG)
 good-bot --svg | --image            shareable image card (SVG, + PNG if a converter exists)
 good-bot --badge                    print a README/profile badge for your rank
@@ -461,7 +480,7 @@ cd worker && npx wrangler dev                     # local dev server
 
 | Directory | What's in it |
 |---|---|
-| `/` | The CLI engine — `niceness.js`, `scales.js`, `demo-data.js`, `test/` |
+| `/` | The CLI engine — `niceness.js`, `scales.js`, `achievements.js`, `demo-data.js`, `test/` |
 | `/commands/` | Claude Code slash command definitions |
 | `/.claude-plugin/` | Claude Code plugin manifest |
 | `/web/` | Browser-hosted quiz + import + share + poster (deploys to GH Pages) |

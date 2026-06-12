@@ -42,6 +42,7 @@
   "files": [
     "niceness.js",
     "scales.js",
+    "achievements.js",
     "demo-data.js",
     "commands",
     ".claude-plugin",
