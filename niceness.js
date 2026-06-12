@@ -32,6 +32,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { FACES, SCALES, SCALE_META } = require('./scales.js');
 const { TIER_ORDER, TIER_LABEL, ACHIEVEMENTS, computeAchievementStats, evaluateAchievements, topUnlocked, DEMO_ACHIEVEMENT_STATS } = require('./achievements.js');
+const { buildLabReport, demoLabRecords } = require('./analytics.js');
 
 const SAMPLE_CHAR_BUDGET = 80000;   // ~20k tokens: a deeper read for --ai, still one call
 const PER_MSG_TRUNCATE = 360;
@@ -1338,6 +1339,169 @@ function renderDemoRoast() {
   return out.join('\n');
 }
 
+// ---- the lab (--lab) -------------------------------------------------------
+// Long-form research report over the full history. All the numbers come from
+// analytics.js (pure) on top of stats.js (the math); this function only
+// formats. The honesty contract carries through: every claim is printed WITH
+// its uncertainty (CI or p-value), and any section that lacked data explains
+// exactly what was missing instead of inventing a finding.
+
+function labP(p) { return p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`; }
+function labPct(x) { return `${Math.round(x * 100)}%`; }
+function labCI(lo, hi) { return `${Math.round(lo * 100)}–${Math.round(hi * 100)}%`; }
+function labKeyDate(key) { // 'YYYY-MM-DD' → 'May 2, 2026'
+  const [y, m, d] = key.split('-').map(Number);
+  return `${MONTHS[m - 1]} ${d}, ${y}`;
+}
+function labHeader(emoji, title) { return ['', color(`   ${emoji} ${title}`, '1;97')]; }
+function labNote(text) { return wrap(text, 64).map(l => color('      ' + l, '90')); }
+// Downsample a long series so the sparkline stays inside 80 columns.
+function labCondense(values, maxN) {
+  if (values.length <= maxN) return values;
+  const out = [];
+  for (let i = 0; i < maxN; i++) {
+    const lo = Math.floor((i * values.length) / maxN);
+    const hi = Math.max(lo + 1, Math.floor(((i + 1) * values.length) / maxN));
+    out.push(mean(values.slice(lo, hi)));
+  }
+  return out;
+}
+
+function renderLab(report, opts) {
+  opts = opts || {};
+  const m = report.meta;
+  const out = [''];
+  for (const l of banner('THE LAB · YOUR MANNERS, PEER-REVIEWED')) out.push(l);
+  out.push('');
+  out.push(color(`   📐 n = ${fmtCount(m.messages)} messages · ${m.activeDays} active days · ${m.granularity === 'day' ? 'daily' : 'weekly'} resolution${opts.demo ? ' · demo data' : ''}`, '96'));
+  if (opts.span) out.push(color(`   🗓  ${opts.span}`, '90'));
+  if (m.timestamped < m.messages) {
+    out.push(color(`      (${fmtCount(m.messages - m.timestamped)} messages had no timestamp and sat out the time analyses)`, '90'));
+  }
+
+  // 📈 Trend & changepoints
+  out.push(...labHeader('📈', 'Trend & changepoints'));
+  const tr = report.trend;
+  if (!tr.ok) out.push(...labNote(tr.reason));
+  else {
+    out.push(`      tone  ${color(sparkline(labCondense(tr.values, 48)), '96')}`);
+    out.push(color(`            (${tr.values.length} ${tr.granularity === 'day' ? 'daily' : 'weekly'} buckets, niceness ${Math.round(Math.min(...tr.values))}–${Math.round(Math.max(...tr.values))})`, '90'));
+    const word = tr.mk.trend === 'increasing' ? color('warming', '1;92') : tr.mk.trend === 'decreasing' ? color('cooling', '1;91') : 'flat';
+    out.push(`      Mann-Kendall: ${word} trend (S = ${tr.mk.S}, ${labP(tr.mk.p)})${tr.mk.trend === 'none' ? color(' — no significant drift', '90') : ''}`);
+    if (!tr.shifts.length) out.push(color('      no changepoints survived the penalty — one steady regime', '90'));
+    for (const s of tr.shifts) {
+      out.push(`      your tone shifted around ${color(labKeyDate(s.key), `1;${s.after >= s.before ? '92' : '91'}`)} (avg ${Math.round(s.before)} → ${Math.round(s.after)})`);
+    }
+  }
+
+  // 🔮 Forecast
+  out.push(...labHeader('🔮', 'Forecast'));
+  const fc = report.forecast;
+  if (!fc.ok) out.push(...labNote(fc.reason));
+  else {
+    const ci = fc.slopeCI.map(v => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+    out.push(`      slope ${fc.slopePerDay >= 0 ? '+' : ''}${fc.slopePerDay.toFixed(2)} pts/day (95% CI ${ci[0]}…${ci[1]}, r² = ${fc.r2.toFixed(2)})`);
+    const target = new Date(fc.targetMs);
+    const persona = personaForNiceness(fc.predicted);
+    out.push(`      trajectory: ${persona.emoji} ${color(persona.name, '1;97')} by ${MONTHS[target.getMonth()]} '${String(target.getFullYear()).slice(2)} (predicted ${Math.round(fc.predicted)}, range ${Math.round(fc.lo)}–${Math.round(fc.hi)})`);
+    out.push(color(`      (a ${fc.horizonDays}-day linear extrapolation, not destiny)`, '90'));
+  }
+
+  // 🔁 Mood dynamics
+  out.push(...labHeader('🔁', 'Mood dynamics (first-order Markov)'));
+  const md = report.mood;
+  if (!md.ok) out.push(...labNote(md.reason));
+  else {
+    out.push(color(`      ${pad('from \\ to', 12)}${pad('warm', 9)}${pad('neutral', 9)}harsh`, '90'));
+    for (const a of ['warm', 'neutral', 'harsh']) {
+      out.push(`      ${color(pad(a, 12), '97')}${pad(labPct(md.matrix[a].warm), 9)}${pad(labPct(md.matrix[a].neutral), 9)}${labPct(md.matrix[a].harsh)}`);
+    }
+    if (md.grudge) out.push(`      grudge P(harsh→harsh) = ${md.grudge.p.toFixed(2)} (95% CI ${md.grudge.lo.toFixed(2)}–${md.grudge.hi.toFixed(2)}, n = ${md.grudge.n})`);
+    else out.push(color('      grudge coefficient: too few harsh messages to measure (a good problem)', '90'));
+    if (md.recovery) {
+      const r = md.recovery;
+      out.push(`      recovery: median ${r.median} message${r.median === 1 ? '' : 's'} back to civil (${r.episodes} episodes${r.unrecovered ? `, ${r.unrecovered} unresolved` : ''})`);
+    }
+    const oc = md.openClose;
+    out.push(`      open warm ${labPct(oc.open.p)} (CI ${labCI(oc.open.lo, oc.open.hi)}) vs close warm ${labPct(oc.close.p)} (CI ${labCI(oc.close.lo, oc.close.hi)})`);
+    const ocWord = oc.verdict === 'opener' ? '→ you greet nicer than you leave (intervals separate)'
+      : oc.verdict === 'closer' ? '→ you leave nicer than you arrive (intervals separate)'
+      : '→ no honest open-vs-close difference (intervals overlap)';
+    out.push(color(`      ${ocWord}`, oc.verdict === 'inconclusive' ? '90' : '93'));
+  }
+
+  // 🌀 Frustration spirals
+  out.push(...labHeader('🌀', 'Frustration spirals'));
+  const sp = report.spirals;
+  if (!sp.ok) out.push(...labNote(sp.reason));
+  else if (sp.count === 0) out.push(color('      zero episodes of ≥3 rapid-fire short negative messages. Composure!', '92'));
+  else {
+    out.push(`      ${sp.count} episode${sp.count === 1 ? '' : 's'} of ≥3 rapid-fire (<2 min) short, negative messages`);
+    const w = sp.worst;
+    out.push(`      worst: ${color(fmtDate(w.start), '1;91')} — ${w.length} messages in ${Math.max(1, Math.round((w.end - w.start) / 60000))} min`);
+    if (sp.trend && sp.trend.monthly.length >= 3) {
+      const seq = sp.trend.monthly.map(x => x.n);
+      const shown = seq.length > 10 ? ['…'].concat(seq.slice(-9)) : seq;
+      const mk = sp.trend.mk;
+      const dir = mk.trend === 'decreasing' ? color('fading', '1;92') : mk.trend === 'increasing' ? color('escalating', '1;91') : 'no significant trend';
+      out.push(`      by month: ${shown.join(' → ')}${seq.length > 10 ? ' (last 9)' : ''}`);
+      out.push(`      → ${dir} (Mann-Kendall ${labP(mk.p)})`);
+    }
+  }
+
+  // 🦉 Chronotype
+  out.push(...labHeader('🦉', 'Chronotype'));
+  const ch = report.chronotype;
+  if (!ch.ok) out.push(...labNote(ch.reason));
+  else {
+    const mins = Math.round(ch.meanHour * 60) % (24 * 60);
+    out.push(`      circadian peak ≈ ${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')} (R = ${ch.R.toFixed(2)}, Rayleigh ${labP(ch.rayleighP)})`);
+    for (const b of ch.buckets) {
+      if (!b.n) { out.push(color(`      ${pad(b.label, 10)} (no messages)`, '90')); continue; }
+      const bar = fillBar(b.p, 16, b.p >= 0.3 ? '92' : b.p >= 0.15 ? '93' : '91');
+      out.push(`      ${color(pad(b.label, 10), '97')} ${bar} ${labPct(b.p)} warm (CI ${labCI(b.lo, b.hi)}) ${color(`(${fmtCount(b.n)})`, '90')}`);
+    }
+    const nightWord = {
+      meaner: 'you ARE meaner after midnight — the intervals separate',
+      nicer: 'you are NICER after midnight — the intervals separate',
+      inconclusive: 'after midnight vs daytime: intervals overlap — no honest claim',
+      insufficient: 'not enough night messages to compare honestly',
+    }[ch.night.verdict];
+    out.push(color(`      ${nightWord}`, ch.night.verdict === 'meaner' ? '91' : ch.night.verdict === 'nicer' ? '92' : '90'));
+    const wkWord = {
+      meaner: 'weekends bring out your spicy side (intervals separate)',
+      nicer: 'you are nicer on weekends (intervals separate)',
+      inconclusive: 'weekday vs weekend: no honest difference (intervals overlap)',
+      insufficient: 'not enough weekend messages to compare honestly',
+    }[ch.weekend.verdict];
+    out.push(color(`      ${wkWord}`, ch.weekend.verdict === 'meaner' ? '91' : ch.weekend.verdict === 'nicer' ? '92' : '90'));
+  }
+
+  // 🏗️ Project league
+  out.push(...labHeader('🏗️', 'Project league'));
+  const lg = report.league;
+  if (!lg.ok) out.push(...labNote(lg.reason));
+  else {
+    out.push(color(`      ${pad('project', 18)}${pad('msgs', 7)}${pad('politeness', 12)}harsh rate (95% CI)`, '90'));
+    for (const r of lg.rows) {
+      const name = r.name.length > 16 ? r.name.slice(0, 15) + '…' : r.name;
+      out.push(`      ${color(pad(name, 18), '97')}${pad(fmtCount(r.n), 7)}${pad(r.politeness.toFixed(2) + '/msg', 12)}${labPct(r.harshRate)} (${labCI(r.harshLo, r.harshHi)})`);
+    }
+    if (lg.skipped > 0) out.push(color(`      (${lg.skipped} project${lg.skipped === 1 ? '' : 's'} under the ${lg.minN}-message bar — not ranked)`, '90'));
+    out.push(color('      project names are directory basenames only — paths stay private', '90'));
+  }
+
+  // 🧪 Methods
+  out.push(...labHeader('🧪', 'Methods'));
+  out.push(...labNote(
+    'Mann-Kendall tie-corrected trend test · binary-segmentation changepoint detection (BIC-style penalty) · OLS slope with a 95% t-interval · Wilson score intervals on every proportion · Rayleigh uniformity test (Wilkie 1983) · first-order Markov chain over per-message warm/neutral/harsh states. Sections with too little data say so rather than guess. Computed 100% locally.'));
+  out.push('');
+  out.push(color(`   📣 How does YOUR data hold up? → github.com/${REPO}`, '1;95'));
+  out.push(color('      Run --lab, post your findings. #BeNiceToYourAI', '95'));
+  out.push('');
+  return out.join('\n');
+}
+
 // ---- opt-in AI roast -----------------------------------------------------
 function buildSample(scored, budget) {
   const spicy = scored.filter(m => m.mean > 0).sort((a, b) => b.mean - a.mean).slice(0, 40);
@@ -2219,6 +2383,8 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --timeline          niceness trend by month + time of day
   good-bot --achievements      unlockable badge gallery: earned + still-locked (try with --demo)
   good-bot --roast             a 100% local roast of your AI manners — no AI, just receipts (try with --demo)
+  good-bot --lab               🧪 the research report: trend + changepoints, forecast, Markov mood
+                               model, spirals, chronotype, project league (try with --demo)
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
@@ -2292,6 +2458,17 @@ function main() {
       process.stdout.write(renderDemoRoast() + '\n');
       return;
     }
+    // --lab --demo runs the full research report on a deterministic,
+    // synthetic-but-plausible history: a real changepoint, a real warming
+    // trend, front-loaded late-night spirals, and a project league with one
+    // project deliberately under the min-n bar.
+    if (argv.includes('--lab')) {
+      const recs = demoLabRecords();
+      const { first, last } = spanOf(recs);
+      process.stdout.write(renderLab(buildLabReport(recs), { span: dateSpan(first, last), demo: true }) + '\n');
+      process.stderr.write('🔒 demo data — synthetic history, nothing read, nothing sent.\n');
+      return;
+    }
     renderDemo();
     return;
   }
@@ -2301,6 +2478,7 @@ function main() {
   const wantTimeline = argv.includes('--timeline');
   const wantAchievements = argv.includes('--achievements');
   const wantRoast = argv.includes('--roast');
+  const wantLab = argv.includes('--lab');
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
   const wantWrapped = argv.includes('--wrapped') || argv.includes('--instagram') || argv.includes('--tiktok');
@@ -2551,6 +2729,18 @@ function main() {
     return;
   }
 
+  // --lab: the research report replaces the card. Pure local math
+  // (analytics.js + stats.js) over the same scored records — no AI, no
+  // network, and only aggregate numbers + project basenames on the page.
+  if (wantLab) {
+    const labText = renderLab(buildLabReport(analysis.scored), { span });
+    process.stdout.write(labText + '\n');
+    if (!noCopy) copyClipboard(labText.replace(/\x1b\[[0-9;]*m/g, ''));
+    process.stderr.write(`(plain-text report ${noCopy ? 'ready above' : 'copied to your clipboard'})\n`);
+    process.stderr.write('🔒 100% local — every statistical test ran on your machine; nothing was sent anywhere.\n');
+    return;
+  }
+
   let card = null;
   if (random) {
     const idx = Math.floor(Math.random() * SCALE.length);
@@ -2720,4 +2910,5 @@ module.exports = {
   achievementCardLines, renderAchievementGallery,
   roastSeed, computeRoastStats, isSaintly, roastBucketIds, buildRoast,
   renderRoastCard, DEMO_ROAST_STATS,
+  renderLab,
 };

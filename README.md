@@ -379,6 +379,26 @@ It roasts the **behavior, never the human** — and if you're genuinely saintly,
 
 ---
 
+## 🧪 The Lab
+
+```bash
+good-bot --lab                # the full research report on your manners
+good-bot --lab --demo         # preview it on a synthetic history
+```
+
+The flagship analytics mode: **changepoint detection on your manners.** A long-form, multi-section scientific report computed over your *entire* history — by real statistics (`stats.js` + `analytics.js`), 100% locally, like everything else here:
+
+- **📈 Trend & changepoints** — a Mann-Kendall trend test on your day-by-day tone, plus binary-segmentation changepoint detection: *"your tone shifted around Feb 9, 2026 (avg 22 → 40)"*.
+- **🔮 Forecast** — OLS extrapolation 60 days out, mapped onto the persona ladder (*"trajectory: 🥓 Ron Swanson by Aug '26"*) with a 95% CI on the slope. It **refuses to forecast** when the fit is noise or you have under 14 active days — no fiction.
+- **🔁 Mood dynamics** — a first-order Markov chain over your warm/neutral/harsh messages: the full transition matrix, your **grudge coefficient** P(harsh→harsh) with a Wilson interval, your median recovery time back to civil, and whether you greet the bot nicer than you leave it.
+- **🌀 Frustration spirals** — bursts of ≥3 rapid-fire (<2 min apart), short, negative messages: episode count, your worst night on record, and the month-by-month trend.
+- **🦉 Chronotype** — circular statistics over your message hours (Rayleigh uniformity test) and warmth by time of day. It only says *"you're meaner after midnight"* if the confidence intervals actually separate.
+- **🏗️ Project league** — which project gets the best you: top 5 by volume with politeness ratio and harsh rate (≥30 messages to qualify; **directory basenames only**, full paths never appear).
+
+Every claim ships with its uncertainty (a CI or a p-value), and any section without enough data says exactly that — *"not enough data — need 4 more active days"* — instead of making something up. The 🧪 methods footnote names every test used.
+
+---
+
 ## 📈 Watch your glow-up
 
 ```bash
@@ -463,6 +483,8 @@ good-bot --ai                       opt-in: redacted sample → your local 'clau
 good-bot --timeline                 niceness trend by month + time of day
 good-bot --achievements             unlockable badge gallery (earned + locked)
 good-bot --roast                    100% local roast of your AI manners (no AI, just receipts)
+good-bot --lab                      🧪 research report: trend + changepoints, forecast, Markov
+                                    mood model, spirals, chronotype, project league
 good-bot --wrapped                  Year-in-AI poster (1080×1920 PNG)
 good-bot --svg | --image            shareable image card (SVG, + PNG if a converter exists)
 good-bot --badge                    print a README/profile badge for your rank

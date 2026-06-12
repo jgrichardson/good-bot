@@ -8,6 +8,29 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`--lab` — The Lab, a research report on your manners** — the flagship
+  analytics mode: a long-form, multi-section scientific report card
+  computed by the new pure `analytics.js` engine on top of `stats.js`,
+  100% locally. Sections: 📈 trend & changepoints (Mann-Kendall trend
+  test + binary-segmentation changepoints — "your tone shifted around
+  Feb 9"), 🔮 forecast (OLS extrapolation 60 days out, mapped onto the
+  persona ladder with a 95% CI on the slope; it *refuses* to forecast
+  when r² is noise or the history has under 14 active days), 🔁 mood
+  dynamics (first-order Markov chain over per-message warm/neutral/harsh
+  states: full transition matrix, grudge coefficient P(harsh→harsh) with
+  a Wilson interval, median recovery time back to civil, and an
+  opening-vs-closing-warmth verdict), 🌀 frustration spirals (bursts of
+  ≥3 rapid-fire (<2 min) short negative messages: episode count, worst
+  date, month-by-month trend), 🦉 chronotype (circular statistics +
+  Rayleigh test; "meaner after midnight" is only claimed when the Wilson
+  intervals separate), 🏗️ project league (top-5 table with politeness
+  ratio + harsh rate, ≥30 messages to qualify, directory basenames only
+  so paths stay private), and a 🧪 methods footnote naming every test.
+  Honesty rules are baked in: every claim carries a CI or a p-value, and
+  thin sections say "not enough data — need N more active days" instead
+  of fabricating. `--lab --demo` previews the report on a deterministic
+  synthetic history with a real changepoint, a real warming trend, and
+  front-loaded late-night spirals.
 - **`stats.js` statistical core** — a pure, zero-dependency statistics
   module (peer of `scales.js` / `achievements.js`) laying the mathematical
   foundation for the upcoming `--lab` analytics mode. Ships six documented,
@@ -21,8 +44,8 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   plus `mean`/`variance`/`median`/`ranks` helpers and self-implemented
   erf / normal CDF / Student-t special functions. Every function is NaN-free
   on degenerate input (empty, length-1, constant series) and verified
-  against textbook / scipy-known values in `test/stats.test.js`. No CLI
-  surface yet; `--lab` will wire it up.
+  against textbook / scipy-known values in `test/stats.test.js`. `--lab`
+  (above) is its CLI surface.
 - **`--roast`** — a 100% local comedy roast of your AI manners. No
   network, no AI calls: a roast-line library keyed to your real stat
   buckets (f-bomb tiers, please/thanks droughts, ALL-CAPS, demand
