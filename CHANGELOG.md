@@ -8,6 +8,20 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`--roast`** — a 100% local comedy roast of your AI manners. No
+  network, no AI calls: a roast-line library keyed to your real stat
+  buckets (f-bomb tiers, please/thanks droughts, ALL-CAPS, demand
+  pressure, late-night tone, walls of text, niceness trajectory)
+  assembles 4–6 lines — an opener, 2–4 stat-grounded jabs citing your
+  actual numbers ("41 f-bombs. The bot has a lawyer now."), and a
+  backhanded-compliment closer. Deterministic by default (seeded from
+  the stats, so the same history always roasts the same way);
+  `--random` reshuffles the jokes. Genuinely saintly histories flip
+  the roast and get grilled for being TOO nice ("You thanked it for an
+  error message. Twice, probably."). `--roast --demo` previews both a
+  spicy roast and the saint flip on canned stats. Privacy: the roast
+  card shows aggregate numbers only — no quoted transcript text at
+  all, nothing sent anywhere.
 - **Machine-readable output** — `--json` prints a single self-describing
   JSON object to stdout (no card, no color codes, no clipboard, no files
   written, no history entry): package version, `generated_with`, persona

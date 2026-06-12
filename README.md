@@ -337,6 +337,46 @@ Your rarest unlocked badges appear on the report card automatically; the gallery
 
 ---
 
+## 🔥 Roast me
+
+```bash
+good-bot --roast              # the bot has the mic now
+good-bot --roast --random     # reshuffle the jokes
+good-bot --roast --demo       # preview both the roast AND the saint flip
+```
+
+A 100% local comedy roast of your AI manners — **no AI calls, no network**, just heuristics over your own stats, like everything else here. The jokes are keyed to your real numbers (f-bomb count, please drought, ALL-CAPS meltdowns, late-night tone, walls of text, your trajectory) and the same history always roasts the same way, so it's screenshot-stable. `--random` reshuffles.
+
+```
+  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  ┃     THE ROAST · YOUR AI MANNERS, REVIEWED      ┃
+  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  ╔═════╗      🔥  TONIGHT WE ROAST: BILL BELICHICK
+  ║ ¬ ¬ ║      “the bot has the mic now”
+  ║  ~  ║
+  ╚═════╝
+
+   1.8k messages reviewed. The bot has prepared some remarks.
+
+   🔥 41 f-bombs. The basilisk stopped taking notes and
+        started a podcast.
+   🔥 12 messages in full caps. Caps lock is not a
+        debugging tool, but you've really committed.
+   🔥 9 pleases in 1.8k messages. "Please" is not a
+        rate-limited API.
+
+   The good news: you're memorable. The bad news: that's also
+   the bad news.
+
+   ────────────────────────────────────────────────
+   📊 1820 messages · 9 pleases · 4 thank-yous · 41 f-bombs · 12 ALL-CAPS
+```
+
+It roasts the **behavior, never the human** — and if you're genuinely saintly, the roast flips and grills you for being TOO nice (*"You thanked it for an error message. Twice, probably."*). Only aggregate numbers appear on the roast card — no quotes from your transcripts at all.
+
+---
+
 ## 📈 Watch your glow-up
 
 ```bash
@@ -420,6 +460,7 @@ good-bot                            your card, 100% local (default)
 good-bot --ai                       opt-in: redacted sample → your local 'claude'
 good-bot --timeline                 niceness trend by month + time of day
 good-bot --achievements             unlockable badge gallery (earned + locked)
+good-bot --roast                    100% local roast of your AI manners (no AI, just receipts)
 good-bot --wrapped                  Year-in-AI poster (1080×1920 PNG)
 good-bot --svg | --image            shareable image card (SVG, + PNG if a converter exists)
 good-bot --badge                    print a README/profile badge for your rank
@@ -483,7 +524,7 @@ git clone https://github.com/jgrichardson/good-bot.git
 cd good-bot
 node niceness.js --demo                           # preview every rank
 node niceness.js --quiz-answers AAAAAAA --no-copy # smoke test
-npm test                                          # 126 cases on Node 18 / 20 / 22
+npm test                                          # 178 cases on Node 18 / 20 / 22
 
 # Web app
 cd web && npm install && npm run dev              # http://localhost:5173/

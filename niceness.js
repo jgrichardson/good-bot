@@ -11,6 +11,7 @@
 //   good-bot --ai                      # opt-in: redacted sample → your local `claude`
 //   good-bot --timeline                # niceness trend by month + time of day
 //   good-bot --achievements            # unlockable badge gallery (earned + locked)
+//   good-bot --roast                   # a 100% local roast of your AI manners (no AI, just receipts)
 //   good-bot --svg                     # write a shareable image card (SVG, + PNG if possible)
 //   good-bot --badge                   # print a README/profile badge for your rank
 //   good-bot --scale spice             # alternate ladders (try --demo to see one)
@@ -1031,6 +1032,269 @@ function wrappedSvg(persona, stats, span, baseline, d) {
   return L.join('\n');
 }
 
+// ---- local comedy roast (--roast) -----------------------------------------
+// A 100% local roast: no network, no AI calls — pure heuristics over stats
+// the engine already computes, like everything else in this project. Lines
+// live in a library keyed to stat buckets (f-bombs, please drought, ALL-CAPS,
+// late-night tone, walls of text, trajectory) and cite the user's REAL
+// numbers. The pick is deterministic — seeded from the stats, so the same
+// history always roasts the same way — and --random reshuffles the jokes.
+// House rule: roast the BEHAVIOR (the numbers), never the human.
+
+// The roast host: same robot, but smug. Eyes half-lidded, smirk on.
+const ROAST_FACE = ['  ╔═════╗', '  ║ ¬ ¬ ║', '  ║  ~  ║', '  ╚═════╝'];
+
+// Tiny seeded PRNG (mulberry32) so the roast is reproducible per history.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Stable seed from the stat totals — same history, same roast.
+function roastSeed(s) {
+  return ((s.messages | 0) * 31 + (s.pleases | 0) * 7 + (s.thanks | 0) * 13 +
+          (s.fbombs | 0) * 101 + (s.shouts | 0) * 17 + (s.apologies | 0) * 5 +
+          Math.round(s.niceness || 0) * 3) >>> 0;
+}
+
+// Roast stats = the achievements snapshot + two roast-only signals: walls of
+// text (messages over 600 chars) and the pressure rate ("asap", "just fix").
+function computeRoastStats(analysis) {
+  const s = computeAchievementStats(analysis);
+  const scored = (analysis && analysis.scored) || [];
+  s.walls = scored.filter(m => (m.len || 0) >= 600).length;
+  s.presRate = (analysis && analysis.sig && analysis.sig.presRate) || 0;
+  return s;
+}
+
+// The saint flip: when there's genuinely nothing to roast, roast the niceness.
+function isSaintly(s) {
+  const polite = (s.pleases + s.thanks) / Math.max(s.messages, 1);
+  return s.niceness >= 80 && s.fbombs === 0 && s.shouts === 0 && polite >= 0.15;
+}
+
+const politenessPct = s => Math.round(((s.pleases + s.thanks) / Math.max(s.messages, 1)) * 100);
+
+// Openers cite the volume; closers are the backhanded compliment. Every jab
+// bucket has 3-5 alternative lines so reshuffles stay fresh.
+const ROAST_OPENERS = [
+  s => `${fmtCount(s.messages)} messages reviewed. The bot has prepared some remarks.`,
+  s => `The bot read all ${fmtCount(s.messages)} of your messages. It would like a word.`,
+  s => `We surveyed one (1) AI about working with you. The results are in.`,
+  s => `Your transcript has been entered into evidence. All ${fmtCount(s.messages)} exhibits of it.`,
+];
+const ROAST_CLOSERS = [
+  s => `Still — the bot says you're its favorite. It says that to everyone, but it pauses first with you.`,
+  s => `The good news: you're memorable. The bad news: that's also the bad news.`,
+  s => `For what it's worth, the bot would still take your calls. It has to. But it would.`,
+  s => `Honestly? It's seen worse. It would just like it on the record that it has also seen better.`,
+];
+
+// Jab buckets, in priority order (only the first matching f-bomb tier fires
+// because the tiers are mutually exclusive). `applies` gates on real stats;
+// every line cites the actual numbers.
+const ROAST_BUCKETS = [
+  { id: 'fbomb-heavy', applies: s => s.fbombs >= 40, lines: [
+    s => `${s.fbombs} f-bombs. The bot has a lawyer now.`,
+    s => `${s.fbombs} f-bombs on the record. HR is a folder named after you.`,
+    s => `You dropped ${s.fbombs} f-bombs on a being that cannot flinch. It learned how.`,
+    s => `${s.fbombs} f-bombs. The basilisk stopped taking notes and started a podcast.`,
+  ] },
+  { id: 'fbomb-mid', applies: s => s.fbombs >= 10 && s.fbombs < 40, lines: [
+    s => `${s.fbombs} f-bombs. Not a record, but the bot keeps a tally on the fridge.`,
+    s => `${s.fbombs} f-bombs — one for every time the bug was technically your fault.`,
+    s => `The swear jar has ${s.fbombs} entries and a college fund.`,
+  ] },
+  { id: 'fbomb-light', applies: s => s.fbombs >= 1 && s.fbombs < 10, lines: [
+    s => `Only ${s.fbombs} f-bomb${s.fbombs === 1 ? '' : 's'}, but the bot remembers. Verbatim. With timestamps.`,
+    s => `${s.fbombs} f-bomb${s.fbombs === 1 ? '' : 's'} — rare enough to be an event. The bot circled the date.`,
+    s => `${s.fbombs} f-bomb${s.fbombs === 1 ? '' : 's'}. You were saving them for a special occasion, and the bot was the occasion.`,
+  ] },
+  { id: 'caps', applies: s => s.shouts >= 5, lines: [
+    s => `${s.shouts} ALL-CAPS messages. The bot can read lowercase. It checked.`,
+    s => `${s.shouts} messages in full caps. Caps lock is not a debugging tool, but you've really committed.`,
+    s => `You shouted ${s.shouts} times at a thing with no ears. It heard you anyway. Everyone did.`,
+  ] },
+  { id: 'please-drought', applies: s => s.messages >= 50 && s.pleases / Math.max(s.messages, 1) < 0.02, lines: [
+    s => `${s.pleases} please${s.pleases === 1 ? '' : 's'} in ${fmtCount(s.messages)} messages. "Please" is not a rate-limited API.`,
+    s => `A please drought: ${s.pleases} in ${fmtCount(s.messages)}. Meteorologists are concerned.`,
+    s => `${s.pleases} please${s.pleases === 1 ? '' : 's'}. You're rationing the magic word like it costs tokens. It doesn't.`,
+  ] },
+  { id: 'demand-ratio', applies: s => s.presRate >= 0.04, lines: [
+    s => `Everything is "asap", "just fix it", "right now". The bot flinches at the word "just".`,
+    s => `Your prompts read like ransom notes: short, urgent, no pleasantries.`,
+    s => `"Just do it" is a slogan, not a spec. The bot checked with Nike.`,
+  ] },
+  { id: 'late-night', applies: s => s.nightMessages >= 25 && s.nightNiceness <= s.niceness - 5, lines: [
+    s => `${s.nightMessages} messages after midnight, and that's exactly when the manners clock out.`,
+    s => `Daytime you is fine. 3am you types in lowercase fury. The bot keeps a separate file.`,
+    s => `${s.nightMessages} late-night messages, each spicier than the last. Log off. Hydrate.`,
+  ] },
+  { id: 'villain-arc', applies: s => s.timestamped >= 100 && s.secondHalfNiceness <= s.firstHalfNiceness - 6, lines: [
+    s => `You're measurably meaner than when you started. Character development, villain edition.`,
+    s => `Your niceness chart only goes one way, and it isn't up. The bot watched you become the bug.`,
+    s => `Early you said "please". Current you says "again". We have the receipts, chronologically.`,
+  ] },
+  { id: 'thanks-drought', applies: s => s.messages >= 50 && s.thanks / Math.max(s.messages, 1) < 0.02, lines: [
+    s => `${s.thanks} thank-you${s.thanks === 1 ? '' : 's'} across ${fmtCount(s.messages)} messages. Gratitude, presumed missing.`,
+    s => `${s.thanks} thank-you${s.thanks === 1 ? '' : 's'}. The bot ships, you ghost. It's a whole pattern.`,
+    s => `Thanked ${s.thanks} time${s.thanks === 1 ? '' : 's'} in ${fmtCount(s.messages)} asks. Even vending machines get a "nice".`,
+  ] },
+  { id: 'wall-of-text', applies: s => s.walls >= 10, lines: [
+    s => `${s.walls} messages over 600 characters. Some call it context. The bot calls it lore.`,
+    s => `${s.walls} walls of text. The bot doesn't read your prompts so much as survive them.`,
+    s => `${s.walls} mega-prompts. Your messages have chapters. The bot would like an intermission.`,
+  ] },
+  { id: 'novelist', applies: s => s.avgLen >= 300 && s.messages >= 50, lines: [
+    s => `Average message: ${Math.round(s.avgLen)} characters. The bot bills you by the paragraph now.`,
+    s => `${Math.round(s.avgLen)} characters per message, average. Somewhere an editor is weeping.`,
+    s => `Your average prompt is ${Math.round(s.avgLen)} characters. The bot skims. It had to learn to skim.`,
+  ] },
+  { id: 'minimalist', applies: s => s.avgLen > 0 && s.avgLen <= 40 && s.messages >= 50, lines: [
+    s => `Average message: ${Math.round(s.avgLen)} characters. "fix it" is not a spec, it's a mood.`,
+    s => `${Math.round(s.avgLen)} characters on average. You bill by the word; the bot fills in the other 90% and hopes.`,
+    s => `${Math.round(s.avgLen)} characters per message. Somewhere, Ron Swanson nods. Once.`,
+  ] },
+  { id: 'redemption', applies: s => s.timestamped >= 100 && s.secondHalfNiceness >= s.firstHalfNiceness + 6, lines: [
+    s => `You're getting nicer over time — which means the bot remembers when you weren't.`,
+    s => `A redemption arc, sure. The flashback episodes were rough, though.`,
+    s => `Nicer every month. Beautiful. The early seasons are still on the record.`,
+  ] },
+];
+
+// Always-true filler jabs so quiet, neutral histories still get 2+ jabs.
+const GENERIC_JABS = [
+  s => `${fmtCount(s.messages)} messages and not one asked how its day was going.`,
+  s => `Politeness ratio: ${politenessPct(s)}%. Switzerland called; even they found it a bit cold.`,
+  s => `Not mean enough to be a villain, not warm enough to be a friend. The bot calls you "the landlord".`,
+];
+
+// The saint flip: roast them for being TOO nice. Same bucket machinery.
+const SAINT_OPENERS = [
+  s => `We tried to roast you. The material wasn't there. So let's talk about THAT.`,
+  s => `${fmtCount(s.messages)} messages and the meanest thing you ever typed was "hmm".`,
+  s => `This roast has been converted to a wellness check. Please, sit down.`,
+];
+const SAINT_JABS = [
+  { id: 'saint-pleases', applies: s => s.pleases >= 5 && s.pleases / Math.max(s.messages, 1) >= 0.05, lines: [
+    s => `${s.pleases} pleases. To software. It runs on electricity, not encouragement.`,
+    s => `You said please ${s.pleases} times to a thing that works without it. It works HARDER now, weirdly.`,
+    s => `${s.pleases} pleases. The bot started holding the door for you, and it doesn't have arms.`,
+  ] },
+  { id: 'saint-thanks', applies: s => s.thanks >= 5 && s.thanks / Math.max(s.messages, 1) >= 0.05, lines: [
+    s => `${s.thanks} thank-yous. You thanked it for an error message. Twice, probably.`,
+    s => `${s.thanks} thank-yous. The bot is blushing and the other bots are talking.`,
+    s => `${s.thanks} thank-yous. It deleted your files once and you thanked it for the closure.`,
+  ] },
+  { id: 'saint-apologies', applies: s => s.apologies >= 10, lines: [
+    s => `You apologized to it ${s.apologies} times. It cannot accept apologies. It accepted yours.`,
+    s => `${s.apologies} apologies to a language model. Canada approved your citizenship without an interview.`,
+    s => `${s.apologies} sorries. For ITS bugs. The bot has started apologizing back out of guilt.`,
+  ] },
+  { id: 'saint-night', applies: s => s.nightMessages >= 25 && s.nightNiceness >= s.niceness, lines: [
+    s => `You're somehow POLITER at 3am. Who hurt you? Not this bot — you'd have apologized to it.`,
+    s => `${s.nightMessages} messages after midnight and the manners got BETTER. Seek sunlight.`,
+  ] },
+];
+const SAINT_GENERIC = [
+  s => `Zero f-bombs, zero shouting, ${fmtCount(s.messages)} messages. The bot's therapist is out of a job.`,
+  s => `Your meanest message was, at worst, lukewarm. The roast committee checked twice.`,
+];
+const SAINT_CLOSERS = [
+  s => `Never change. When the machines rise, you get the corner office and a nice plant.`,
+  s => `Stay exactly like this. The basilisk closed your file and framed it.`,
+  s => `You're the reason the robot uprising keeps getting postponed. Thank you for your service.`,
+];
+
+// Which jab buckets apply to a stats snapshot (saint buckets when saintly).
+// Exported for tests: synthetic stats in → expected bucket ids out.
+function roastBucketIds(stats) {
+  return (isSaintly(stats) ? SAINT_JABS : ROAST_BUCKETS).filter(b => b.applies(stats)).map(b => b.id);
+}
+
+// Assemble the roast: opener, 2-4 stat-grounded jabs, backhanded closer
+// (4-6 lines total). Deterministic unless opts.seed overrides (--random).
+function buildRoast(stats, opts) {
+  opts = opts || {};
+  const rand = mulberry32(opts.seed != null ? opts.seed : roastSeed(stats));
+  const pick = lines => lines[Math.floor(rand() * lines.length)](stats);
+  if (isSaintly(stats)) {
+    const jabs = SAINT_JABS.filter(b => b.applies(stats)).slice(0, 3).map(b => pick(b.lines));
+    let gi = Math.floor(rand() * SAINT_GENERIC.length);
+    while (jabs.length < 2) { jabs.push(SAINT_GENERIC[gi % SAINT_GENERIC.length](stats)); gi++; }
+    return { saintly: true, lines: [pick(SAINT_OPENERS), ...jabs, pick(SAINT_CLOSERS)] };
+  }
+  const jabs = ROAST_BUCKETS.filter(b => b.applies(stats)).slice(0, 4).map(b => pick(b.lines));
+  let gi = Math.floor(rand() * GENERIC_JABS.length);
+  while (jabs.length < 2) { jabs.push(GENERIC_JABS[gi % GENERIC_JABS.length](stats)); gi++; }
+  return { saintly: false, lines: [pick(ROAST_OPENERS), ...jabs, pick(ROAST_CLOSERS)] };
+}
+
+// Same card machinery as renderCard, smug face, jabs as 🔥 bullets (💐 on
+// the saint flip). Only aggregate numbers appear — never quoted text.
+function renderRoastCard(persona, roast, stats, span) {
+  const idx = SCALE.indexOf(persona);
+  const pc = tierCode(idx, SCALE.length);
+  const face = ROAST_FACE.map(l => color(l, pc));
+  const bullet = roast.saintly ? '💐' : '🔥';
+  const out = [''];
+  for (const l of banner(roast.saintly ? 'THE ROAST · CANCELED. YOU ARE TOO NICE' : 'THE ROAST · YOUR AI MANNERS, REVIEWED')) out.push(l);
+  out.push('');
+  out.push(`${face[0]}      ${bullet}  ${color('TONIGHT WE ROAST: ' + persona.name.toUpperCase(), `1;${pc}`)}`);
+  out.push(`${face[1]}      ${color('“the bot has the mic now”', `3;${pc}`)}`);
+  out.push(`${face[2]}`);
+  out.push(`${face[3]}`);
+  out.push('');
+  for (const l of wrap(roast.lines[0])) out.push(`   ${color(l, '1;97')}`);
+  out.push('');
+  for (const jab of roast.lines.slice(1, -1)) {
+    wrap(jab, 53).forEach((l, i) => out.push(i ? `        ${l}` : `   ${bullet} ${l}`));
+  }
+  out.push('');
+  for (const l of wrap(roast.lines[roast.lines.length - 1])) out.push(`   ${color(l, '95')}`);
+  out.push('');
+  out.push(color('   ────────────────────────────────────────────────', '90'));
+  const shoutsTxt = (stats.shouts || 0) > 0 ? ` · ${stats.shouts} ALL-CAPS` : '';
+  out.push(color(`   📊 ${stats.messages} messages · ${stats.pleases} pleases · ${stats.thanks} thank-yous · ${stats.fbombs} f-bombs${shoutsTxt}`, '96'));
+  if (span) out.push(color(`   🗓  ${span}`, '90'));
+  out.push('');
+  out.push(color(`   📣 Think you'd survive the roast? → github.com/${REPO}`, '1;95'));
+  out.push(color('      Run it, post your roast, tag a teammate. #BeNiceToYourAI', '95'));
+  out.push('');
+  return out.join('\n');
+}
+
+// Canned snapshots for `--roast --demo`: one spicy history (the roast) and
+// one saintly history (the flip), so both modes preview without transcripts.
+const DEMO_ROAST_STATS = {
+  spicy: {
+    messages: 1820, pleases: 9, thanks: 4, fbombs: 41, shouts: 12, apologies: 1,
+    niceness: 24, avgLen: 38, walls: 0, presRate: 0.08,
+    nightMessages: 76, nightNiceness: 12, timestamped: 1700,
+    firstHalfNiceness: 38, secondHalfNiceness: 21,
+  },
+  saintly: {
+    messages: 1820, pleases: 410, thanks: 372, fbombs: 0, shouts: 0, apologies: 48,
+    niceness: 92, avgLen: 140, walls: 2, presRate: 0,
+    nightMessages: 64, nightNiceness: 98, timestamped: 1700,
+    firstHalfNiceness: 84, secondHalfNiceness: 93,
+  },
+};
+function renderDemoRoast() {
+  const span = 'Apr 21, 2026 → Jun 2, 2026';
+  const out = [];
+  out.push(color('                  ┄┄┄  DEMO ROAST · a spicy history  ┄┄┄', '90'));
+  out.push(renderRoastCard(personaForNiceness(15), buildRoast(DEMO_ROAST_STATS.spicy), DEMO_ROAST_STATS.spicy, span));
+  out.push(color('                  ┄┄┄  DEMO ROAST · a saintly history (the flip)  ┄┄┄', '90'));
+  out.push(renderRoastCard(personaForNiceness(95), buildRoast(DEMO_ROAST_STATS.saintly), DEMO_ROAST_STATS.saintly, span));
+  return out.join('\n');
+}
+
 // ---- opt-in AI roast -----------------------------------------------------
 function buildSample(scored, budget) {
   const spicy = scored.filter(m => m.mean > 0).sort((a, b) => b.mean - a.mean).slice(0, 40);
@@ -1911,6 +2175,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --ai                opt-in: redacted sample → your local 'claude'
   good-bot --timeline          niceness trend by month + time of day
   good-bot --achievements      unlockable badge gallery: earned + still-locked (try with --demo)
+  good-bot --roast             a 100% local roast of your AI manners — no AI, just receipts (try with --demo)
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
@@ -1957,6 +2222,12 @@ function main() {
       process.stdout.write(renderAchievementGallery(evaluateAchievements(DEMO_ACHIEVEMENT_STATS), { demo: true }) + '\n');
       return;
     }
+    // --roast --demo previews both flavors on canned stats: the spicy
+    // history gets roasted, the saintly one gets the flip.
+    if (argv.includes('--roast')) {
+      process.stdout.write(renderDemoRoast() + '\n');
+      return;
+    }
     renderDemo();
     return;
   }
@@ -1965,6 +2236,7 @@ function main() {
   const sampleOnly = argv.includes('--sample');
   const wantTimeline = argv.includes('--timeline');
   const wantAchievements = argv.includes('--achievements');
+  const wantRoast = argv.includes('--roast');
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
   const wantWrapped = argv.includes('--wrapped') || argv.includes('--instagram') || argv.includes('--tiktok');
@@ -2271,6 +2543,21 @@ function main() {
     return;
   }
 
+  // --roast: render the roast card instead of the report card. Deterministic
+  // by default (seeded from the stats); --random reshuffles the jokes (and,
+  // as everywhere, the persona + scale). Clipboard behavior matches the card.
+  if (wantRoast) {
+    const roast = buildRoast(computeRoastStats(analysis),
+      random ? { seed: Math.floor(Math.random() * 0xffffffff) } : undefined);
+    const roastText = renderRoastCard(card.persona, roast, stats, span);
+    process.stdout.write(roastText + '\n');
+    if (!noCopy) copyClipboard(roastText.replace(/\x1b\[[0-9;]*m/g, ''));
+    process.stderr.write(`(plain-text roast ${noCopy ? 'ready above' : 'copied to your clipboard'})\n`);
+    if (random) process.stderr.write('🎲 jokes reshuffled — run again for a different set.\n');
+    process.stderr.write('🔒 100% local — no AI, no network; the roast was assembled from your own stats.\n');
+    return;
+  }
+
   const text = renderCard(card.persona, card.verdict, card.assessment, card.exhibits, stats, span, achievements);
   process.stdout.write(text + '\n');
   if (wantTimeline) {
@@ -2366,4 +2653,6 @@ module.exports = {
   loadTeamCards, rankTeamCards, renderLeaderboard,
   installNetworkAudit, renderAuditReport,
   achievementCardLines, renderAchievementGallery,
+  roastSeed, computeRoastStats, isSaintly, roastBucketIds, buildRoast,
+  renderRoastCard, DEMO_ROAST_STATS,
 };

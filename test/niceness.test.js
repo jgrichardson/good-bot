@@ -307,6 +307,94 @@ test('gallery hides locked legendaries behind ??? but names locked rares', () =>
   assert.match(out, /0 of \d+ unlocked/);
 });
 
+// ---- local comedy roast (--roast) ----------------------------------------
+const {
+  computeRoastStats, roastBucketIds, isSaintly, buildRoast, renderRoastCard,
+  DEMO_ROAST_STATS,
+} = require('../niceness.js');
+
+// Synthetic roast-stats snapshot: a quiet, neutral history; override per test.
+function fakeRoastStats(over) {
+  return Object.assign({
+    messages: 500, pleases: 25, thanks: 20, fbombs: 0, shouts: 0, apologies: 0,
+    niceness: 50, avgLen: 120, walls: 0, presRate: 0,
+    nightMessages: 0, nightNiceness: 50, timestamped: 0,
+    firstHalfNiceness: 50, secondHalfNiceness: 50,
+  }, over || {});
+}
+
+test('roastBucketIds keys jabs to the right stat buckets', () => {
+  assert.ok(roastBucketIds(fakeRoastStats({ fbombs: 41 })).includes('fbomb-heavy'));
+  assert.ok(!roastBucketIds(fakeRoastStats({ fbombs: 41 })).includes('fbomb-mid'));
+  assert.ok(roastBucketIds(fakeRoastStats({ fbombs: 12 })).includes('fbomb-mid'));
+  assert.ok(roastBucketIds(fakeRoastStats({ fbombs: 2 })).includes('fbomb-light'));
+  assert.ok(roastBucketIds(fakeRoastStats({ shouts: 9 })).includes('caps'));
+  assert.ok(roastBucketIds(fakeRoastStats({ pleases: 3 })).includes('please-drought'));
+  assert.ok(roastBucketIds(fakeRoastStats({ thanks: 3 })).includes('thanks-drought'));
+  assert.ok(roastBucketIds(fakeRoastStats({ presRate: 0.06 })).includes('demand-ratio'));
+  assert.ok(roastBucketIds(fakeRoastStats({ walls: 15 })).includes('wall-of-text'));
+  assert.ok(roastBucketIds(fakeRoastStats({ avgLen: 320 })).includes('novelist'));
+  assert.ok(roastBucketIds(fakeRoastStats({ avgLen: 30 })).includes('minimalist'));
+  assert.ok(roastBucketIds(fakeRoastStats({ nightMessages: 30, nightNiceness: 40 })).includes('late-night'));
+  assert.ok(roastBucketIds(fakeRoastStats({ timestamped: 120, secondHalfNiceness: 40 })).includes('villain-arc'));
+  assert.ok(roastBucketIds(fakeRoastStats({ timestamped: 120, secondHalfNiceness: 60 })).includes('redemption'));
+  // the quiet neutral baseline trips none of them
+  assert.deepStrictEqual(roastBucketIds(fakeRoastStats()), []);
+});
+
+test('buildRoast is deterministic: same stats, same roast', () => {
+  const s = fakeRoastStats({ fbombs: 41, shouts: 12, pleases: 3 });
+  assert.deepStrictEqual(buildRoast(s).lines, buildRoast(s).lines);
+  // an explicit seed (the --random path) can pick a different set
+  assert.ok(Array.isArray(buildRoast(s, { seed: 12345 }).lines));
+});
+
+test('buildRoast lands 4-6 lines and cites the real numbers', () => {
+  const r = buildRoast(fakeRoastStats({ fbombs: 41 }));
+  assert.equal(r.saintly, false);
+  assert.ok(r.lines.length >= 4 && r.lines.length <= 6);
+  assert.ok(r.lines.some(l => l.includes('41')), 'jab must cite the actual f-bomb count');
+});
+
+test('buildRoast pads quiet histories with generic jabs (still 4+ lines)', () => {
+  const r = buildRoast(fakeRoastStats());
+  assert.ok(r.lines.length >= 4 && r.lines.length <= 6);
+});
+
+test('a genuinely saintly history flips the roast', () => {
+  const saint = fakeRoastStats({ niceness: 92, pleases: 410, thanks: 372, apologies: 48, messages: 1820 });
+  assert.equal(isSaintly(saint), true);
+  // one f-bomb disqualifies sainthood; so does a cold politeness ratio
+  assert.equal(isSaintly(fakeRoastStats({ niceness: 92, pleases: 410, thanks: 372, fbombs: 1, messages: 1820 })), false);
+  assert.equal(isSaintly(fakeRoastStats({ niceness: 92, pleases: 2, thanks: 2 })), false);
+  const r = buildRoast(saint);
+  assert.equal(r.saintly, true);
+  assert.ok(r.lines.length >= 4 && r.lines.length <= 6);
+  assert.ok(roastBucketIds(saint).includes('saint-pleases'));
+  assert.ok(roastBucketIds(saint).includes('saint-thanks'));
+});
+
+test('computeRoastStats derives walls + presRate from an analysis', () => {
+  const items = [
+    { text: 'just fix it asap', ts: '2026-06-01T10:00:00Z', project: null },
+    { text: 'w'.repeat(700), ts: '2026-06-01T11:00:00Z', project: null },
+    { text: 'thanks!', ts: '2026-06-01T12:00:00Z', project: null },
+  ];
+  const s = computeRoastStats(analyze(items));
+  assert.equal(s.messages, 3);
+  assert.equal(s.walls, 1);
+  assert.ok(s.presRate > 0);
+});
+
+test('renderRoastCard renders a card with jabs and the stats line', () => {
+  const stats = DEMO_ROAST_STATS.spicy;
+  const text = renderRoastCard(personaFor({ niceness: 20, fbombRate: 0.02, capsRate: 0.01, meanRate: 0.3, apologyRate: 0, thanksRate: 0, pleaseRate: 0, hash: 1 }), buildRoast(stats), stats, 'Apr 21, 2026 → Jun 2, 2026');
+  assert.ok(text.includes('THE ROAST'));
+  assert.ok(text.includes('🔥'));
+  assert.ok(text.includes('41 f-bombs'));
+  assert.ok(text.includes('#BeNiceToYourAI'));
+});
+
 // ---- ladders ------------------------------------------------------------
 test('every scale is non-empty and well-formed', () => {
   for (const scale of Object.values(SCALES)) {
