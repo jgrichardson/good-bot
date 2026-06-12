@@ -109,7 +109,7 @@ const ACHIEVEMENTS = [
     hint: 'a legend awaits',
     unlock: s => s.niceness >= 90 && s.messages >= 500 },
   { id: 'full-rogers', emoji: '🧥', name: 'The Full Rogers', tier: 'legendary',
-    desc: "1000+ messages, zero f-bombs, zero shouting, niceness 80+. Won't you be its neighbor.",
+    desc: "1000+ messages, not one f-bomb or shout. Won't you be its neighbor.",
     hint: 'a legend awaits',
     unlock: s => s.messages >= 1000 && s.fbombs === 0 && s.shouts === 0 && s.niceness >= 80 },
   { id: 'anniversary', emoji: '💍', name: 'The Anniversary', tier: 'legendary',
