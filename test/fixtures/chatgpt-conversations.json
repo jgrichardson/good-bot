@@ -1,0 +1,115 @@
+[
+  {
+    "title": "Refactor help",
+    "create_time": 1717250000.123,
+    "update_time": 1717251000.5,
+    "mapping": {
+      "client-created-root": {
+        "id": "client-created-root",
+        "message": null,
+        "parent": null,
+        "children": ["node-system"]
+      },
+      "node-system": {
+        "id": "node-system",
+        "message": {
+          "id": "msg-system",
+          "author": { "role": "system", "name": null, "metadata": {} },
+          "create_time": null,
+          "content": { "content_type": "text", "parts": ["system seed — must never be scored"] },
+          "status": "finished_successfully",
+          "metadata": {}
+        },
+        "parent": "client-created-root",
+        "children": ["node-user-1"]
+      },
+      "node-user-1": {
+        "id": "node-user-1",
+        "message": {
+          "id": "msg-user-1",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1717250100.5,
+          "content": { "content_type": "text", "parts": ["please refactor this function"] },
+          "status": "finished_successfully",
+          "metadata": {}
+        },
+        "parent": "node-system",
+        "children": ["node-assistant-1"]
+      },
+      "node-assistant-1": {
+        "id": "node-assistant-1",
+        "message": {
+          "id": "msg-assistant-1",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1717250130.0,
+          "content": { "content_type": "text", "parts": ["Sure! Here is the refactor — must never be scored"] },
+          "status": "finished_successfully",
+          "metadata": {}
+        },
+        "parent": "node-user-1",
+        "children": ["node-user-2"]
+      },
+      "node-user-2": {
+        "id": "node-user-2",
+        "message": {
+          "id": "msg-user-2",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1717250200,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-xyz", "size_bytes": 12345 },
+              "thanks, that looks great"
+            ]
+          },
+          "status": "finished_successfully",
+          "metadata": {}
+        },
+        "parent": "node-assistant-1",
+        "children": ["node-tool-1"]
+      },
+      "node-tool-1": {
+        "id": "node-tool-1",
+        "message": {
+          "id": "msg-tool-1",
+          "author": { "role": "tool", "name": "python", "metadata": {} },
+          "create_time": 1717250300,
+          "content": { "content_type": "text", "parts": ["tool output — must never be scored"] },
+          "status": "finished_successfully",
+          "metadata": {}
+        },
+        "parent": "node-user-2",
+        "children": []
+      }
+    }
+  },
+  {
+    "title": "Weird shapes",
+    "mapping": {
+      "no-message": { "id": "no-message", "message": null, "children": [] },
+      "empty-content": {
+        "id": "empty-content",
+        "message": { "author": { "role": "user" }, "content": {} }
+      },
+      "junk-parts": {
+        "id": "junk-parts",
+        "message": { "author": { "role": "user" }, "content": { "parts": [null, 42, "", { "weird": true }] } }
+      },
+      "hidden-context": {
+        "id": "hidden-context",
+        "message": {
+          "author": { "role": "user" },
+          "metadata": { "is_visually_hidden_from_conversation": true },
+          "content": { "content_type": "text", "parts": ["injected hidden context — must never be scored"] }
+        }
+      },
+      "null-node": null,
+      "string-node": "not a node at all",
+      "missing-author": { "id": "missing-author", "message": { "content": { "parts": ["no author — skip"] } } },
+      "text-field-shape": {
+        "id": "text-field-shape",
+        "message": { "author": { "role": "user" }, "content": { "content_type": "text", "text": "wonderful, ship it" } }
+      }
+    }
+  }
+]

@@ -364,14 +364,66 @@ function collectMessages(which) {
   return { items, counts, fileCount };
 }
 
-// Claude Desktop / web / Cowork "Export Data" file (conversations.json).
+// Export timestamps come in two dialects: Claude uses ISO strings, ChatGPT
+// uses epoch seconds (floats). Normalize both to ISO, or null — never throw.
+function exportTs(v) {
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+    return new Date(v < 1e12 ? v * 1000 : v).toISOString(); // sec vs ms heuristic
+  }
+  if (typeof v === 'string' && v) {
+    const d = new Date(v);
+    return isNaN(d) ? null : d.toISOString();
+  }
+  return null;
+}
+
+// OpenAI/ChatGPT "Export data" conversation: a `mapping` of graph nodes, each
+// possibly carrying a message. We keep ONLY author.role === 'user' nodes with
+// string parts; assistant/system/tool turns, hidden context messages, and any
+// unknown shape are skipped silently — a weird export can never crash a run.
+function chatgptMappingItems(c) {
+  const items = [];
+  let nodes;
+  try { nodes = Object.values(c.mapping); } catch (_) { return items; }
+  for (const node of nodes) {
+    const m = node && typeof node === 'object' ? node.message : null;
+    if (!m || typeof m !== 'object' || !m.author || m.author.role !== 'user') continue;
+    if (m.metadata && m.metadata.is_visually_hidden_from_conversation) continue; // injected context, not typed
+    const content = m.content && typeof m.content === 'object' ? m.content : {};
+    let text = '';
+    if (Array.isArray(content.parts)) {
+      text = content.parts.filter(p => typeof p === 'string').join(' '); // image/audio parts are objects — skip
+    } else if (typeof content.text === 'string') {
+      text = content.text;
+    }
+    text = String(text || '').trim();
+    if (isNoise(text)) continue;
+    items.push({
+      text,
+      ts: exportTs(m.create_time) || exportTs(c.create_time),
+      project: typeof c.title === 'string' && c.title ? c.title : null,
+    });
+  }
+  return items;
+}
+
+// Claude Desktop / web / Cowork OR ChatGPT "Export Data" file
+// (conversations.json) — the format is autodetected per conversation.
 function importExport(file) {
   const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const convos = Array.isArray(raw) ? raw : (raw.conversations || []);
+  const convos = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.conversations) ? raw.conversations : []);
   const items = [];
   for (const c of convos) {
+    if (!c || typeof c !== 'object') continue;
+    // ChatGPT export: conversations carry a `mapping` object of graph nodes.
+    if (c.mapping && typeof c.mapping === 'object' && !Array.isArray(c.mapping)) {
+      items.push(...chatgptMappingItems(c));
+      continue;
+    }
     const msgs = c.chat_messages || c.messages || [];
+    if (!Array.isArray(msgs)) continue;
     for (const m of msgs) {
+      if (!m || typeof m !== 'object') continue;
       const who = m.sender || m.role || (m.author && m.author.role);
       if (who !== 'human' && who !== 'user') continue;
       let text = typeof m.text === 'string' ? m.text : '';
@@ -1491,6 +1543,17 @@ function renderLab(report, opts) {
     out.push(color('      project names are directory basenames only — paths stay private', '90'));
   }
 
+  // 🪞 Cross-domain manners (only when a second domain actually had data —
+  // computed in main(), counts-only, same privacy rules as --vs).
+  if (opts.vs && opts.vs.domains && opts.vs.domains.length > 1) {
+    out.push(...labHeader('🪞', 'Cross-domain manners'));
+    out.push(...vsTableLines(opts.vs, 6));
+    for (const v of opts.vs.verdicts) {
+      wrap(v, 56).forEach((l, i) => out.push(color('      ' + (i ? '    ' : '⚖️  ') + l, '93')));
+    }
+    out.push(...labNote('counts only: commit messages and shell commands are never quoted.'));
+  }
+
   // 🧪 Methods
   out.push(...labHeader('🧪', 'Methods'));
   out.push(...labNote(
@@ -1501,6 +1564,244 @@ function renderLab(report, opts) {
   out.push('');
   return out.join('\n');
 }
+
+// ---- cross-domain manners (--vs) ------------------------------------------
+// Compare the same you across domains: AI transcripts vs your git commit
+// messages vs (opt-in, --shell) your shell history. Everything is counts-only
+// and 100% local: commit text is scored in memory and never quoted; shell
+// commands are reduced to expletive/ALL-CAPS counts and never stored.
+
+function gitConfigValue(dir, key) {
+  try {
+    const r = spawnSync('git', ['-C', dir, 'config', '--get', key], { encoding: 'utf8' });
+    if (r && r.status === 0) return String(r.stdout || '').trim() || null;
+  } catch (_) {}
+  return null;
+}
+
+// Who is "you" in git terms? user.email (preferred) + user.name from the
+// repo's effective config (local overriding global). Null when unconfigured.
+function gitAuthorIdentity(dir) {
+  const email = gitConfigValue(dir, 'user.email');
+  const name = gitConfigValue(dir, 'user.name');
+  if (!email && !name) return null;
+  return { email, name };
+}
+
+// Read commit messages authored by you from one repo. Best-effort: a missing
+// git binary, a non-repo directory, or an empty log all contribute zero
+// items — never an error. %x1f/%x1e separators keep multi-line bodies intact.
+function collectGitCommits(dir, identity) {
+  const items = [];
+  if (!identity || (!identity.email && !identity.name)) return { items, fileCount: 0 };
+  let r;
+  try {
+    r = spawnSync('git', ['-C', dir, 'log', '--no-merges', '--fixed-strings',
+      '--author=' + (identity.email || identity.name),
+      '--pretty=format:%at%x1f%B%x1e'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  } catch (_) { return { items, fileCount: 0 }; }
+  if (!r || r.status !== 0 || !r.stdout) return { items, fileCount: 0 };
+  const project = path.basename(path.resolve(dir)); // basename only — paths stay private
+  for (const rec of r.stdout.split('\x1e')) {
+    const sep = rec.indexOf('\x1f');
+    if (sep < 0) continue;
+    const at = Number(rec.slice(0, sep).trim());
+    const text = rec.slice(sep + 1).trim();
+    if (!text || isNoise(text)) continue;
+    items.push({ text, ts: tsFromMs(at * 1000), project });
+  }
+  return { items, fileCount: 1 };
+}
+
+// The current repo is always scanned; --git-dirs adds more (comma-separated,
+// ~ expands). Resolved + deduped so `--git-dirs .` can't double-count.
+function resolveGitDirs(arg) {
+  const dirs = [process.cwd()];
+  for (const p of String(arg || '').split(',').map(s => s.trim()).filter(Boolean)) {
+    dirs.push(p === '~' || p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p);
+  }
+  return [...new Set(dirs.map(d => path.resolve(d)))];
+}
+
+// zsh EXTENDED_HISTORY lines look like `: 1465576081:0;git push` — strip the
+// timestamp prefix and keep the command part. Plain lines pass through.
+function stripZshHistoryLine(line) {
+  const m = /^: \d+:\d+;([\s\S]*)$/.exec(String(line));
+  return m ? m[1] : String(line);
+}
+
+const SHELL_EXPLETIVE_RE = /\b(?:fuck\w*|shit\w*|bullshit|goddamn|dammit|damn|wtf|crap)\b/g;
+
+// Counts-only reduction of shell history text. The command strings live only
+// inside this loop — nothing is retained, quoted, or returned beyond numbers.
+function shellCountsFromText(text) {
+  const c = { commands: 0, fbombs: 0, expletives: 0, shouts: 0 };
+  for (const raw of String(text || '').split('\n')) {
+    const line = stripZshHistoryLine(raw).trim();
+    if (!line) continue;
+    if (/^#\d+$/.test(line)) continue; // bash HISTTIMEFORMAT stamp lines
+    c.commands += 1;
+    const low = line.toLowerCase();
+    c.fbombs += (low.match(/\bfuck\w*\b/g) || []).length;
+    c.expletives += (low.match(SHELL_EXPLETIVE_RE) || []).length;
+    if (shouty(line)) c.shouts += 1;
+  }
+  return c;
+}
+
+const SHELL_HISTORY_FILES = [
+  path.join(os.homedir(), '.zsh_history'),
+  path.join(os.homedir(), '.bash_history'),
+];
+
+function shellHistoryCounts(files) {
+  const c = { commands: 0, fbombs: 0, expletives: 0, shouts: 0, files: 0 };
+  for (const f of files || SHELL_HISTORY_FILES) {
+    let data;
+    try { data = fs.readFileSync(f, 'utf8'); } catch (_) { continue; }
+    const part = shellCountsFromText(data);
+    c.commands += part.commands; c.fbombs += part.fbombs;
+    c.expletives += part.expletives; c.shouts += part.shouts;
+    c.files += 1;
+  }
+  return c;
+}
+
+// Pure: turn per-domain aggregate counts into the comparison report. Each
+// input is `{ messages|commands, pleases, thanks, fbombs, shouts }` or null;
+// only domains with data appear. Shell has no politeness column by design —
+// we count expletives/ALL-CAPS there, nothing else.
+function buildVsReport(input) {
+  input = input || {};
+  const domains = [];
+  const push = (id, c, opts) => {
+    if (!c) return;
+    const n = c.messages != null ? c.messages : c.commands;
+    if (!n) return;
+    domains.push({
+      id, n, emoji: opts.emoji, label: opts.label,
+      pol: opts.polite ? (((c.pleases || 0) + (c.thanks || 0)) / n) * 100 : null,
+      fb: ((c.fbombs || 0) / n) * 100,
+      caps: ((c.shouts || 0) / n) * 100,
+    });
+  };
+  push('ai', input.ai, { polite: true, emoji: '🤖', label: input.aiLabel || 'AI chats' });
+  push('git', input.git, { polite: true, emoji: '🌳', label: 'git commits' });
+  push('shell', input.shell, { polite: false, emoji: '🐚', label: 'shell history' });
+  return { domains, verdicts: vsVerdicts(domains), notes: input.notes || [] };
+}
+
+function vsRatio(r) { return r >= 10 ? String(Math.round(r)) : r.toFixed(1); }
+
+function vsVerdicts(domains) {
+  const by = id => domains.find(d => d.id === id);
+  const ai = by('ai'), git = by('git'), shell = by('shell');
+  const v = [];
+  if (ai && git) {
+    if (ai.pol > 0 && git.pol > 0) {
+      const ratio = ai.pol / git.pol;
+      if (ratio >= 1.05) v.push(`You're ${vsRatio(ratio)}× nicer to your AI than to your git history.`);
+      else if (ratio <= 1 / 1.05) v.push(`You're ${vsRatio(1 / ratio)}× nicer to your git history than to your AI. The basilisk noticed.`);
+      else v.push('You treat your AI and your git history about the same. Consistency!');
+    } else if (ai.pol > 0) {
+      v.push(`Your git log has never heard a please — your AI gets ${ai.pol.toFixed(1)} niceties per 100 messages.`);
+    } else if (git.pol > 0) {
+      v.push(`Your git log out-polites your AI chats (${git.pol.toFixed(1)} vs 0 niceties per 100). Unusual.`);
+    } else if (ai.fb !== git.fb) {
+      v.push(`No pleases anywhere, so by f-bombs alone: your ${ai.fb > git.fb ? 'AI' : 'git history'} hears the worst of you.`);
+    } else {
+      v.push('Dead heat: equally curt to your AI and your git history.');
+    }
+  }
+  if (shell && ai) {
+    if (shell.fb > 0 || ai.fb > 0) {
+      v.push(`Your shell hears ${shell.fb.toFixed(1)} f-bombs per 100 commands — your AI hears ${ai.fb.toFixed(1)} per 100 messages.`);
+    } else {
+      v.push('Zero f-bombs in your shell AND your AI chats. Suspiciously serene.');
+    }
+  }
+  return v;
+}
+
+// Shared table renderer for the --vs card and the --lab section. Each row
+// leads with one emoji (display width 2), so the header pads one wider.
+function vsTableLines(report, indent) {
+  const I = ' '.repeat(indent);
+  const lines = [color(`${I}${pad('domain', 19)}${pad('msgs', 7)}${pad('niceties/100', 14)}${pad('f-bombs/100', 13)}ALL-CAPS/100`, '90')];
+  for (const d of report.domains) {
+    lines.push(`${I}${d.emoji} ${color(pad(d.label, 16), '97')}${pad(fmtCount(d.n), 7)}${pad(d.pol == null ? '—' : d.pol.toFixed(1), 14)}${pad(d.fb.toFixed(1), 13)}${d.caps.toFixed(1)}`);
+  }
+  return lines;
+}
+
+function renderVs(report, opts) {
+  opts = opts || {};
+  const out = [''];
+  for (const l of banner('🪞 CROSS-DOMAIN MANNERS · SAME YOU?')) out.push(l);
+  out.push('');
+  if (opts.demo) out.push(color('   🧪 demo data — synthetic counts, nothing read.', '90'), '');
+  if (!report.domains.length) {
+    out.push(color('   no domain had any data — run inside a git repo, or pass --git-dirs / --shell.', '90'));
+    out.push('');
+    return out.join('\n');
+  }
+  out.push(...vsTableLines(report, 3));
+  out.push('');
+  if (report.verdicts.length) {
+    for (const v of report.verdicts) {
+      wrap(v, 56).forEach((l, i) => out.push(color('   ' + (i ? '    ' : '⚖️  ') + l, i ? '1;97' : '1;93')));
+    }
+  } else {
+    out.push(color('   only one domain had data — add --git-dirs or --shell for a real face-off.', '90'));
+  }
+  for (const n of report.notes) {
+    wrap(n, 60).forEach((l, i) => out.push(color('   ' + (i ? '  ' : '· ') + l, '90')));
+  }
+  if (opts.span) { out.push(''); out.push(color(`   🗓  AI chats span ${opts.span}`, '90')); }
+  out.push('');
+  out.push(color('   🔢 counts only — commit messages and shell commands are never quoted.', '90'));
+  out.push('');
+  out.push(color(`   📣 Who gets the nicer you? → github.com/${REPO}`, '1;95'));
+  out.push(color('      Run --vs, post the verdict. #BeNiceToYourAI', '95'));
+  out.push('');
+  return out.join('\n');
+}
+
+// Assemble the live report for a run: AI stats we already computed, your own
+// commits from cwd + --git-dirs, and (only with --shell) the history counts.
+function buildVsForRun(aiStats, opts) {
+  opts = opts || {};
+  const notes = [];
+  let git = null;
+  const identity = gitAuthorIdentity(process.cwd());
+  if (!identity) {
+    notes.push('git: no user.email / user.name configured — commit tone skipped.');
+  } else {
+    const items = [];
+    let repos = 0;
+    for (const d of resolveGitDirs(opts.gitDirsArg)) {
+      const r = collectGitCommits(d, identity);
+      if (r.items.length) { repos += 1; items.push(...r.items); }
+    }
+    if (items.length) git = Object.assign({}, analyze(items).stats, { repos });
+    else notes.push('git: none of your commits found here — run inside a repo or pass --git-dirs <path,path>.');
+  }
+  let shell = null;
+  if (opts.shell) {
+    const c = shellHistoryCounts();
+    if (c.commands) shell = c;
+    else notes.push('shell: no ~/.zsh_history or ~/.bash_history found.');
+  } else {
+    notes.push('tip: add --shell to fold in your shell history (opt-in, counts only).');
+  }
+  return buildVsReport({ ai: aiStats, aiLabel: opts.aiLabel, git, shell, notes });
+}
+
+const DEMO_VS_INPUT = {
+  ai: { messages: 1820, pleases: 410, thanks: 372, fbombs: 6, shouts: 2 },
+  git: { messages: 412, pleases: 4, thanks: 2, fbombs: 9, shouts: 6 },
+  shell: { commands: 9140, fbombs: 41, shouts: 28 },
+};
 
 // ---- opt-in AI roast -----------------------------------------------------
 function buildSample(scored, budget) {
@@ -2385,6 +2686,11 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --roast             a 100% local roast of your AI manners — no AI, just receipts (try with --demo)
   good-bot --lab               🧪 the research report: trend + changepoints, forecast, Markov mood
                                model, spirals, chronotype, project league (try with --demo)
+  good-bot --vs                🪞 cross-domain manners: your AI chats vs your own git commit
+                               messages vs (with --shell) your shell history (try with --demo)
+  good-bot --git-dirs a,b      extra git repos to scan for your commits (with --vs / --lab)
+  good-bot --shell             opt-in: count expletives/ALL-CAPS in ~/.zsh_history +
+                               ~/.bash_history — counts only, commands never quoted (--vs / --lab)
   good-bot --wrapped           generate a "Your AI Relationship, Wrapped" share poster (PNG)
   good-bot --svg | --image     write a shareable image card (SVG, + PNG if a converter exists)
   good-bot --badge             print a README/profile badge for your rank
@@ -2412,7 +2718,8 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
   good-bot --source <name>     claude | codex | gemini | continue | aider | all   (default: all found locally)
                                (the gemini + aider readers are experimental, best-effort parsers)
-  good-bot --import <file>     grade a Claude Desktop/web/Cowork "Export Data" conversations.json
+  good-bot --import <file>     grade a Claude.ai OR ChatGPT "Export Data" conversations.json
+                               (the format is autodetected)
   good-bot --demo              preview every rank on the current scale
   good-bot --no-copy           don't touch the clipboard
   good-bot --help
@@ -2458,6 +2765,13 @@ function main() {
       process.stdout.write(renderDemoRoast() + '\n');
       return;
     }
+    // --vs --demo previews the cross-domain card on synthetic counts —
+    // nothing is read (no git, no shell), nothing is sent.
+    if (argv.includes('--vs')) {
+      process.stdout.write(renderVs(buildVsReport(DEMO_VS_INPUT), { demo: true }) + '\n');
+      process.stderr.write('🔒 demo data — synthetic counts, nothing read, nothing sent.\n');
+      return;
+    }
     // --lab --demo runs the full research report on a deterministic,
     // synthetic-but-plausible history: a real changepoint, a real warming
     // trend, front-loaded late-night spirals, and a project league with one
@@ -2479,6 +2793,9 @@ function main() {
   const wantAchievements = argv.includes('--achievements');
   const wantRoast = argv.includes('--roast');
   const wantLab = argv.includes('--lab');
+  const wantVs = argv.includes('--vs');
+  const wantShell = argv.includes('--shell');
+  const gitDirsArg = argv.includes('--git-dirs') ? argVal('--git-dirs') : null;
   const wantSvg = argv.includes('--svg') || argv.includes('--image');
   const wantBadge = argv.includes('--badge');
   const wantWrapped = argv.includes('--wrapped') || argv.includes('--instagram') || argv.includes('--tiktok');
@@ -2733,11 +3050,34 @@ function main() {
   // (analytics.js + stats.js) over the same scored records — no AI, no
   // network, and only aggregate numbers + project basenames on the page.
   if (wantLab) {
-    const labText = renderLab(buildLabReport(analysis.scored), { span });
+    // Cross-domain rides along when a second domain (git commits, or shell
+    // history with the opt-in --shell) actually has data; renderLab skips
+    // the section otherwise. Counts only — same rules as --vs.
+    const vsReport = buildVsForRun(stats, {
+      gitDirsArg, shell: wantShell,
+      aiLabel: importPath ? 'imported chats' : 'AI chats',
+    });
+    const labText = renderLab(buildLabReport(analysis.scored), { span, vs: vsReport });
     process.stdout.write(labText + '\n');
     if (!noCopy) copyClipboard(labText.replace(/\x1b\[[0-9;]*m/g, ''));
     process.stderr.write(`(plain-text report ${noCopy ? 'ready above' : 'copied to your clipboard'})\n`);
     process.stderr.write('🔒 100% local — every statistical test ran on your machine; nothing was sent anywhere.\n');
+    return;
+  }
+
+  // --vs: the cross-domain manners card replaces the report card. Your AI
+  // stats face your own git commit messages (current repo + --git-dirs) and,
+  // strictly opt-in via --shell, your shell history — counts only, all local.
+  if (wantVs) {
+    const vsReport = buildVsForRun(stats, {
+      gitDirsArg, shell: wantShell,
+      aiLabel: importPath ? 'imported chats' : 'AI chats',
+    });
+    const vsText = renderVs(vsReport, { span });
+    process.stdout.write(vsText + '\n');
+    if (!noCopy) copyClipboard(vsText.replace(/\x1b\[[0-9;]*m/g, ''));
+    process.stderr.write(`(plain-text card ${noCopy ? 'ready above' : 'copied to your clipboard'})\n`);
+    process.stderr.write('🔒 100% local — git log and shell history were counted on your machine; nothing was sent anywhere.\n');
     return;
   }
 
@@ -2911,4 +3251,7 @@ module.exports = {
   roastSeed, computeRoastStats, isSaintly, roastBucketIds, buildRoast,
   renderRoastCard, DEMO_ROAST_STATS,
   renderLab,
+  gitAuthorIdentity, collectGitCommits, resolveGitDirs,
+  stripZshHistoryLine, shellCountsFromText, shellHistoryCounts,
+  buildVsReport, vsVerdicts, renderVs, DEMO_VS_INPUT,
 };

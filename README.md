@@ -75,7 +75,7 @@ If you have a terminal handy and want the full CLI features (`--svg`, `--badge`,
 
 ### Path 3 — Grade your real history
 
-The hosted web app accepts both Claude.ai and ChatGPT export files. The CLI accepts Claude.ai exports today (ChatGPT support coming in v0.3.3).
+Both the hosted web app and the CLI accept Claude.ai **and** ChatGPT export files — `--import` autodetects which one you feed it.
 
 **Export from Claude.ai:**
 
@@ -87,7 +87,13 @@ The hosted web app accepts both Claude.ai and ChatGPT export files. The CLI acce
 4. Unzip → find `conversations.json`
 5. Either: drop the file on the web app, OR run `npx @jgrciv/good-bot --import conversations.json` in a terminal
 
-**Export from ChatGPT:** Same flow — chat.openai.com in a browser → Settings → Data Controls → Export data → email → unzip → drop on web app.
+**Import your ChatGPT history:**
+
+1. Open [chatgpt.com](https://chatgpt.com) in a browser → Settings → **Data controls** → **Export data**
+2. OpenAI emails you a zip (usually within minutes) → unzip → find `conversations.json`
+3. Either: drop the file on the web app, OR run `npx @jgrciv/good-bot --import conversations.json` in a terminal
+
+The CLI autodetects the OpenAI export format (the `mapping`-graph `conversations.json`) and keeps only the messages *you* typed — assistant turns, tool output, and hidden context are skipped.
 
 ### Posting to Instagram, TikTok, or Threads
 
@@ -135,7 +141,7 @@ For Instagram Stories, Reels, TikTok, and Threads, the poster is already the rig
 | Continue.dev | `~/.continue/sessions/` | ✅ first-class | — |
 | Aider | `.aider.chat.history.md` (home, current dir + common project roots) | 🧪 experimental | — |
 | Claude Desktop / claude.ai web / Cowork | server-side | ⚙️ export → `--import` | ✅ drag-drop |
-| ChatGPT desktop / web | server-side | ⚙️ planned in v0.3.3 | ✅ drag-drop |
+| ChatGPT desktop / web | server-side | ⚙️ export → `--import` (autodetected) | ✅ drag-drop |
 | Cursor / Windsurf | SQLite-backed chat | ⚙️ export → `--import` | ⚙️ planned |
 
 Pick one source explicitly with `--source claude | codex | gemini | continue | aider` or `all` (default).
@@ -399,6 +405,26 @@ Every claim ships with its uncertainty (a CI or a p-value), and any section with
 
 ---
 
+## 🪞 Cross-domain manners
+
+```bash
+good-bot --vs                              # AI chats vs your git commit messages
+good-bot --vs --shell                      # …also fold in your shell history (opt-in)
+good-bot --vs --git-dirs ~/work/api,~/oss  # scan extra repos for your commits
+good-bot --vs --demo                       # preview on synthetic counts
+```
+
+Are you only nice to things that talk back? `--vs` compares how you treat your AI against how you talk to **everything else you type at**:
+
+- **🌳 Git commit messages** — only commits *authored by you* (matched via `git config user.email` / `user.name`), from the current repo plus any `--git-dirs` paths, scored through the exact same sentiment machinery as your transcripts.
+- **🐚 Shell history** — strictly **opt-in** via `--shell`: `~/.zsh_history` (extended-history timestamps stripped) and `~/.bash_history` if present, reduced to expletive and ALL-CAPS *counts*. Commands are never stored, quoted, or transmitted.
+
+You get a table (messages, niceties/100, f-bombs/100, ALL-CAPS/100 — only domains with data appear) and a verdict line: *"You're 2.3× nicer to your AI than to your git history."* The same section is appended to `--lab` when a second domain has data.
+
+Privacy: counts only, 100% local, like everything else — commit text and shell commands never appear on any card. Full disclosure in [PRIVACY.md](PRIVACY.md).
+
+---
+
 ## 📈 Watch your glow-up
 
 ```bash
@@ -485,6 +511,9 @@ good-bot --achievements             unlockable badge gallery (earned + locked)
 good-bot --roast                    100% local roast of your AI manners (no AI, just receipts)
 good-bot --lab                      🧪 research report: trend + changepoints, forecast, Markov
                                     mood model, spirals, chronotype, project league
+good-bot --vs                       🪞 cross-domain manners: AI chats vs git commits vs shell
+good-bot --git-dirs <a,b>           extra git repos to scan for your commits (--vs / --lab)
+good-bot --shell                    opt-in: count expletives/ALL-CAPS in shell history (--vs / --lab)
 good-bot --wrapped                  Year-in-AI poster (1080×1920 PNG)
 good-bot --svg | --image            shareable image card (SVG, + PNG if a converter exists)
 good-bot --badge                    print a README/profile badge for your rank
@@ -496,7 +525,8 @@ good-bot --random                   roll a random rank AND random scale
 # Sources + import
 good-bot --source <name>            claude | codex | gemini | continue | aider | all
                                     (gemini + aider are experimental, best-effort parsers)
-good-bot --import <file>            grade a Claude Desktop "Export Data" conversations.json
+good-bot --import <file>            grade a Claude.ai or ChatGPT export (conversations.json,
+                                    format autodetected)
 
 # Social + sharing
 good-bot --share twitter            compose URL for twitter | bluesky | linkedin | reddit

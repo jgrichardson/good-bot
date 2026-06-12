@@ -4,7 +4,7 @@
 
 ## What it does
 
-- **CLI:** reads your **local** AI-coding-assistant transcripts, from exactly these places: Claude Code (`~/.claude/history.jsonl` + `~/.claude/projects/`), Codex (`~/.codex/sessions/`), Gemini CLI (`~/.gemini/tmp/*/logs.json` + `~/.gemini/sessions/`), Continue.dev (`~/.continue/sessions/`), and Aider (`.aider.chat.history.md` in your home directory, the current directory, and one level under common project roots like `~/Projects`, `~/code`, `~/src`). Nothing else on your disk is read.
+- **CLI:** reads your **local** AI-coding-assistant transcripts, from exactly these places: Claude Code (`~/.claude/history.jsonl` + `~/.claude/projects/`), Codex (`~/.codex/sessions/`), Gemini CLI (`~/.gemini/tmp/*/logs.json` + `~/.gemini/sessions/`), Continue.dev (`~/.continue/sessions/`), and Aider (`.aider.chat.history.md` in your home directory, the current directory, and one level under common project roots like `~/Projects`, `~/code`, `~/src`). With `--import <file>` it additionally reads the one Claude.ai or ChatGPT export file you explicitly point it at. With `--vs` / `--lab` it additionally runs `git log` locally (your own commit messages only — see the cross-domain section below), and with the **opt-in** `--shell` flag it reads `~/.zsh_history` + `~/.bash_history`. Nothing else on your disk is read.
 - **Web app:** runs entirely in your browser. The quiz path needs no input beyond your taps. The import path parses your dropped-in `conversations.json` *in the browser tab* — the file is never uploaded.
 - Looks at **only the messages you typed**. Tool results, system reminders, command output, and the model's replies are filtered out and never scored.
 - Computes a tone score with simple local heuristics and prints/displays a report card.
@@ -23,6 +23,15 @@ By default, **your messages never leave your machine.** The CLI confirms this at
 ```
 
 You can prove this yourself: run the CLI with `--audit` to patch every stdlib network surface and print a verified-no-network attestation.
+
+## Cross-domain sources (`--vs`, `--git-dirs`, `--shell`)
+
+The `--vs` card (and the matching `--lab` section) compares your AI manners against two other **strictly local** sources. Here is exactly what is read and what survives:
+
+- **Git commit messages** — read by running `git log` locally in the current directory, plus any repos you pass via `--git-dirs <comma,separated,paths>`. Only commits **authored by you** are considered, matched against `git config user.email` / `user.name`. Commit text is scored in memory and reduced to aggregate counts (messages, pleases, thank-yous, f-bombs, ALL-CAPS); it is **never quoted** on any card, never written to disk, and never transmitted. Project labels are directory basenames only — full paths never appear.
+- **Shell history** — **opt-in only**, via the `--shell` flag; nothing shell-related is read without it. When enabled, the CLI reads `~/.zsh_history` (zsh extended-history timestamps are stripped) and `~/.bash_history` if present, and counts **only** expletives and ALL-CAPS lines. Commands are never stored, never quoted, never transmitted, and never appear in any output — only the counts do. A missing history file simply contributes zero.
+
+Both sources follow the same rule as everything else here: 100% local, counts only, nothing leaves your machine. Neither involves any network call, so the `--audit` attestation covers them too.
 
 ## The exceptions: explicit, named opt-ins
 

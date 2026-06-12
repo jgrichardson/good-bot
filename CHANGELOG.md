@@ -8,6 +8,35 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`--vs` — Cross-domain manners** — are you only nice to things that
+  talk back? A new comparison card grades the same you across domains:
+  your AI transcripts vs your **git commit messages** vs — strictly
+  opt-in via `--shell` — your **shell history**. Git commits are read
+  by running `git log` locally in the current repo plus any
+  `--git-dirs <comma,paths>` repos, keeping only commits authored by
+  you (matched via `git config user.email` / `user.name`) and scoring
+  them through the exact same sentiment machinery as your transcripts.
+  Shell history reads `~/.zsh_history` (extended-history `: ts:0;`
+  prefixes stripped) + `~/.bash_history` and reduces them to expletive
+  and ALL-CAPS **counts** — commands are never stored, quoted, or
+  transmitted. The card shows a per-domain table (messages,
+  niceties/100, f-bombs/100, ALL-CAPS/100 — only domains with data
+  appear) and a verdict line ("You're 2.3× nicer to your AI than to
+  your git history."). The same section is appended to `--lab` when a
+  second domain has data, and `--vs --demo` previews the card on
+  synthetic counts. PRIVACY.md documents the exact paths read and the
+  counts-only guarantee.
+- **ChatGPT export import** — `--import` now autodetects OpenAI's
+  ChatGPT "Export data" format (`conversations.json` whose
+  conversations carry a `mapping` graph of nodes) alongside the
+  existing Claude.ai shape, keeping only `author.role === 'user'`
+  messages and only the string entries of their `parts` arrays.
+  Parsing is defensive: assistant/system/tool turns, hidden context
+  messages, image parts, and unknown node shapes are skipped silently —
+  a weird export can never crash a run. Epoch-second timestamps are
+  normalized to ISO. README has the walkthrough (ChatGPT → Settings →
+  Data controls → Export data).
+
 - **`--lab` — The Lab, a research report on your manners** — the flagship
   analytics mode: a long-form, multi-section scientific report card
   computed by the new pure `analytics.js` engine on top of `stats.js`,
