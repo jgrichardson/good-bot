@@ -126,7 +126,7 @@ test('CLI: --scale-pack <pack> --demo renders every rank of the custom ladder', 
   assert.strictEqual(r.status, 0, r.stderr);
   assert.match(r.stdout, /The Benevolent Sun/i);     // card uppercases names
   assert.match(r.stdout, /Heat Death of the Universe/i);
-  assert.match(r.stdout, /WHAT COSMIC ENTITY ARE YOU TO YOUR AI\?/);
+  assert.match(r.stdout, /WHAT COSMIC ENTITY ARE YOU\?/);
 });
 
 test('CLI: a bad pack exits 1 with the kind error on stderr', () => {

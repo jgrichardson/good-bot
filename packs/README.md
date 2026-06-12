@@ -29,7 +29,7 @@ The shape mirrors one ladder in [`scales.js`](../scales.js):
 ```json
 {
   "name": "cosmic-entities",
-  "title": "WHAT COSMIC ENTITY ARE YOU TO YOUR AI? · STAR CARD",
+  "title": "WHAT COSMIC ENTITY ARE YOU? · STAR CARD",
   "ends": ["  void", "  warm"],
   "ladder": [
     {

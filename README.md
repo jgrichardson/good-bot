@@ -255,7 +255,7 @@ good-bot --scale parks        # Ann Perkins → Tammy II
 good-bot --random             # roll a random rank AND random scale
 ```
 
-**13 scales** ship in v0.3. Adding a new one is one PR — see [CONTRIBUTING.md](CONTRIBUTING.md#new-ranking-scales).
+**13 scales** ship in v0.4. Adding a new one is one PR — see [CONTRIBUTING.md](CONTRIBUTING.md#new-ranking-scales).
 
 ---
 
@@ -658,9 +658,11 @@ good-bot --import <file>            grade a Claude.ai or ChatGPT export (convers
 good-bot --grid                     Wordle-style 7-day tone grid (🟩🟨🟥⬜) — spoiler-free,
                                     paste anywhere (works with --demo)
 good-bot --share                    print prefilled X/Twitter + LinkedIn share links for your grid
-good-bot --share twitter            compose URL for twitter | bluesky | linkedin | reddit
+good-bot --share twitter            compose URL for twitter | bluesky | linkedin | reddit | threads
 good-bot --open                     with --share: open the share URL(s) in your browser
                                     (alias: --share-open)
+good-bot --instagram                render the wrapped poster + stage an IG caption
+good-bot --tiktok                   same, with TikTok upload instructions
 good-bot --webhook <url>            opt-in: POST the (redacted) card to a Slack/Discord webhook
                                     you supply — the only network write (alias: --post-webhook)
 good-bot --record                   asciinema v2 cast → good-bot-cast.json

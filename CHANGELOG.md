@@ -6,6 +6,8 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-12
+
 ### Added
 
 - **The privacy promise is now mechanically verifiable** — three layers,

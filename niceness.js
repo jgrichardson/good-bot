@@ -960,7 +960,7 @@ function wrap(text, width = 58) {
 }
 function banner(title) {
   const w = 48;
-  const t = title.length > w ? title.slice(0, w) : title;
+  const t = [...title].length > w ? [...title].slice(0, w - 1).join('') + '…' : title;
   const pad = w - t.length, left = Math.floor(pad / 2);
   return [
     color('  ┏' + '━'.repeat(w) + '┓', '90'),
@@ -3323,7 +3323,8 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --ai                opt-in: redacted sample → your local 'claude'
   good-bot --timeline          niceness trend by month + time of day
   good-bot --achievements      unlockable badge gallery: earned + still-locked (try with --demo)
-  good-bot --roast             a 100% local roast of your AI manners — no AI, just receipts (try with --demo)
+  good-bot --roast             a 100% local roast of your AI manners — no AI, just
+                               receipts (try with --demo)
   good-bot --lab               🧪 the research report: trend + changepoints, forecast, Markov mood
                                model, spirals, chronotype, project league (try with --demo)
   good-bot --vs                🪞 cross-domain manners: your AI chats vs your own git commit
@@ -3338,7 +3339,8 @@ const HELP = `good-bot — how nice are you to your AI?
                                anywhere, copied to your clipboard (try with --demo)
   good-bot --share             print prefilled X/Twitter + LinkedIn share links for your grid
                                (URLs only — nothing is sent until you click; add --open)
-  good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit | threads (copies to clipboard)
+  good-bot --share <where>     compose URL for twitter | bluesky | linkedin | reddit |
+                               threads (copies to clipboard)
   good-bot --open              with --share: also open the share URL(s) in your browser
   good-bot --share-open        same as --open (older spelling)
   good-bot --instagram         dead-simple path: render wrapped PNG + stage IG caption
@@ -3378,8 +3380,9 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --streak            show your glow-up: persona streak, all-time best, trend
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
-  good-bot --source <name>     claude | codex | gemini | continue | aider | all   (default: all found locally)
-                               (the gemini + aider readers are experimental, best-effort parsers)
+  good-bot --source <name>     claude | codex | gemini | continue | aider | all
+                               (default: all found locally; the gemini + aider readers
+                               are experimental, best-effort parsers)
   good-bot --import <file>     grade a Claude.ai OR ChatGPT "Export Data" conversations.json
                                (the format is autodetected)
   good-bot --demo              preview every rank on the current scale
