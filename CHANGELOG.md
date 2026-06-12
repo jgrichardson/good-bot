@@ -71,6 +71,20 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Aider + Gemini CLI readers rebuilt (experimental)** — the Gemini CLI
+  adapter now parses the prompt logs current builds actually write
+  (`~/.gemini/tmp/<hash>/logs.json`, JSON rows of
+  `{ type: 'user', message, timestamp }`) alongside the legacy
+  `~/.gemini/sessions` JSONL; unknown row shapes are skipped silently so
+  a weird log can never crash a run. The Aider adapter now also checks
+  `~/.aider.chat.history.md` and the current directory (not just one
+  level under common project roots), and the markdown parser keeps ONLY
+  the human's `#### ` heading lines — consecutive `#### ` lines join
+  into one multi-line prompt, while aider's own replies and fenced code
+  blocks are skipped, so the model's output can no longer leak into your
+  score. Both readers are best-effort and marked experimental in
+  `--help` and the README; missing files contribute zero messages, same
+  as an absent Codex dir.
 - **ALL-CAPS shouting is now a real signal** — `shoutyWordCount()` counts
   standalone ALL-CAPS words (50+ tech acronyms like JSON/API/SQL excluded),
   whole-message shouts score +3 mean (was +1), per-word +1 capped at +5,

@@ -4,7 +4,7 @@
 
 ## What it does
 
-- **CLI:** reads your **local** AI-coding-assistant transcripts (Claude Code, Codex, Gemini CLI, Continue.dev, Aider) under their respective folders.
+- **CLI:** reads your **local** AI-coding-assistant transcripts, from exactly these places: Claude Code (`~/.claude/history.jsonl` + `~/.claude/projects/`), Codex (`~/.codex/sessions/`), Gemini CLI (`~/.gemini/tmp/*/logs.json` + `~/.gemini/sessions/`), Continue.dev (`~/.continue/sessions/`), and Aider (`.aider.chat.history.md` in your home directory, the current directory, and one level under common project roots like `~/Projects`, `~/code`, `~/src`). Nothing else on your disk is read.
 - **Web app:** runs entirely in your browser. The quiz path needs no input beyond your taps. The import path parses your dropped-in `conversations.json` *in the browser tab* — the file is never uploaded.
 - Looks at **only the messages you typed**. Tool results, system reminders, command output, and the model's replies are filtered out and never scored.
 - Computes a tone score with simple local heuristics and prints/displays a report card.

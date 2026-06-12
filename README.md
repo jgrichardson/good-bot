@@ -131,14 +131,16 @@ For Instagram Stories, Reels, TikTok, and Threads, the poster is already the rig
 |---|---|---|---|
 | Claude Code | `~/.claude/history.jsonl` + `~/.claude/projects/` | ✅ first-class | — |
 | Codex CLI | `~/.codex/sessions/` | ✅ first-class | — |
-| Gemini CLI | `~/.gemini/sessions/` | ✅ first-class | — |
+| Gemini CLI | `~/.gemini/tmp/*/logs.json` + `~/.gemini/sessions/` | 🧪 experimental | — |
 | Continue.dev | `~/.continue/sessions/` | ✅ first-class | — |
-| Aider | `.aider.chat.history.md` (scanned across common roots) | ✅ first-class | — |
+| Aider | `.aider.chat.history.md` (home, current dir + common project roots) | 🧪 experimental | — |
 | Claude Desktop / claude.ai web / Cowork | server-side | ⚙️ export → `--import` | ✅ drag-drop |
 | ChatGPT desktop / web | server-side | ⚙️ planned in v0.3.3 | ✅ drag-drop |
 | Cursor / Windsurf | SQLite-backed chat | ⚙️ export → `--import` | ⚙️ planned |
 
 Pick one source explicitly with `--source claude | codex | gemini | continue | aider` or `all` (default).
+
+The 🧪 `gemini` and `aider` readers are **experimental**: best-effort parsers over formats that shift between tool versions. They only ever keep what *you* typed (aider's replies and code blocks are skipped; unrecognized Gemini log rows are silently ignored), and a missing file simply contributes zero messages. If yours parses oddly, [file an issue](https://github.com/jgrichardson/good-bot/issues).
 
 **Adding your favorite tool is the easiest first contribution.** See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -445,7 +447,7 @@ Full details: [PRIVACY.md](PRIVACY.md). The whole engine is one short dependency
 
 ## 🤔 How it works
 
-1. Walks every AI-assistant session you've ever had (Claude Code, Codex, Gemini CLI, Continue.dev, Aider — see the table above).
+1. Walks every AI-assistant session you've ever had — Claude Code, Codex, Continue.dev, plus 🧪 experimental Aider and Gemini CLI readers (see the table above) — or a server-side export via `--import`.
 2. Keeps **only the messages you typed** — tool output, system reminders, and the model's replies are filtered out.
 3. Scores tone with simple, transparent heuristics (pleases, thank-yous, frustration markers, shouty caps, profanity).
 4. Maps your tone signature to a rank on the active scale.
@@ -471,6 +473,7 @@ good-bot --random                   roll a random rank AND random scale
 
 # Sources + import
 good-bot --source <name>            claude | codex | gemini | continue | aider | all
+                                    (gemini + aider are experimental, best-effort parsers)
 good-bot --import <file>            grade a Claude Desktop "Export Data" conversations.json
 
 # Social + sharing

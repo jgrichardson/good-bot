@@ -3,7 +3,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  sanitize, extractTexts, extractCodex, importExport, scoreMessage, shouty, analyze,
+  sanitize, extractTexts, extractCodex, extractGemini, extractAiderMarkdown,
+  importExport, scoreMessage, shouty, analyze,
   scaleIndex, pickPersona, parseLabeled, matchPersona, cleanExhibit, sparkline,
   computeWrapped, wrappedSvg, personaFor, SCALES,
 } = require('../niceness.js');
@@ -158,6 +159,31 @@ test('extractCodex pulls human user_message events and strips injected wrappers'
   );
   assert.deepStrictEqual(extractCodex({ type: 'event_msg', payload: { type: 'exec_command_end' } }), []);
   assert.deepStrictEqual(extractCodex({ type: 'response_item', payload: {} }), []);
+});
+
+test('extractGemini reads the ~/.gemini/tmp/*/logs.json row shape and skips junk (experimental)', () => {
+  assert.deepStrictEqual(
+    extractGemini({ sessionId: 's', messageId: 1, type: 'user', message: 'please add a test', timestamp: '2026-06-01T10:00:00.000Z' }),
+    ['please add a test'],
+  );
+  assert.deepStrictEqual(extractGemini({ type: 'gemini', message: 'model reply' }), []);
+  for (const bad of [null, 7, 'str', {}, { type: 'user' }]) assert.deepStrictEqual(extractGemini(bad), []);
+});
+
+test('extractAiderMarkdown keeps only #### user lines; aider output and fences are skipped (experimental)', () => {
+  const md = [
+    '# aider chat started at 2026-06-01 10:00:00',
+    '#### please refactor this',
+    '#### and add tests',
+    'Sure! Here is the plan (aider talking).',
+    '```python',
+    '#### not a prompt, just code',
+    '```',
+    '#### thanks!',
+  ].join('\n');
+  assert.deepStrictEqual(extractAiderMarkdown(md), ['please refactor this\nand add tests', 'thanks!']);
+  assert.deepStrictEqual(extractAiderMarkdown(''), []);
+  assert.deepStrictEqual(extractAiderMarkdown(null), []);
 });
 
 test('importExport parses a Claude data-export shape (human turns only)', () => {

@@ -15,7 +15,7 @@
 //   good-bot --svg                     # write a shareable image card (SVG, + PNG if possible)
 //   good-bot --badge                   # print a README/profile badge for your rank
 //   good-bot --scale spice             # alternate ladders (try --demo to see one)
-//   good-bot --source codex            # pick a tool: claude | codex | all (default: all found)
+//   good-bot --source codex            # pick a tool: claude | codex | gemini | continue | aider | all (default: all found)
 //   good-bot --import conversations.json   # grade a Claude Desktop/web/Cowork data export
 //   good-bot --demo                    # preview every rank on the current scale
 //   good-bot --help
@@ -119,20 +119,53 @@ function extractCodex(obj) {
   return isNoise(text) ? [] : [text];
 }
 
-// Gemini CLI session entry. The tool writes JSONL with each event as a row;
-// human messages have role 'user' and a string `content` (or `parts[].text`).
-// We accept both shapes since the format has evolved.
+// Gemini CLI log entry (experimental). The tool keeps per-project prompt
+// logs at ~/.gemini/tmp/<hash>/logs.json — a JSON array of rows shaped
+// { sessionId, messageId, type: 'user', message: '<typed text>', timestamp }.
+// Older/other builds have also written role+content (string or parts[].text)
+// rows, so we accept those variants too. Anything we don't recognize is
+// skipped silently — a weird row must never crash the run.
 function extractGemini(obj) {
-  if (!obj) return [];
-  const role = obj.role || (obj.message && obj.message.role) || null;
+  if (!obj || typeof obj !== 'object') return [];
+  const nested = obj.message && typeof obj.message === 'object' ? obj.message : null;
+  const role = obj.role || obj.type || (nested && nested.role) || null;
   if (role !== 'user') return [];
-  const c = obj.content != null ? obj.content : (obj.message && obj.message.content);
+  let c = obj.content != null ? obj.content : (nested ? nested.content : null);
+  if (c == null && typeof obj.message === 'string') c = obj.message;   // tmp/*/logs.json shape
   let text = '';
   if (typeof c === 'string') text = c;
   else if (Array.isArray(c)) text = c.filter(p => p && (p.text || typeof p === 'string')).map(p => p.text || p).join(' ');
   else if (Array.isArray(obj.parts)) text = obj.parts.filter(p => p && p.text).map(p => p.text).join(' ');
   text = String(text || '').trim();
   return isNoise(text) ? [] : [text];
+}
+
+function collectGemini() {
+  // Two best-effort homes for Gemini CLI history: the per-project prompt logs
+  // at ~/.gemini/tmp/<hash>/logs.json (what current builds write) and any
+  // JSONL session files under ~/.gemini/sessions (older layout). Either
+  // missing simply contributes zero messages, same as an absent Codex dir.
+  const sessions = collectFromSource({ root: path.join(os.homedir(), '.gemini', 'sessions'), extract: extractGemini });
+  const items = sessions.items;
+  let fileCount = sessions.fileCount;
+  const tmpRoot = path.join(os.homedir(), '.gemini', 'tmp');
+  let entries;
+  try { entries = fs.readdirSync(tmpRoot, { withFileTypes: true }); } catch (_) { entries = []; }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const file = path.join(tmpRoot, e.name, 'logs.json');
+    let data;
+    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { continue; }
+    fileCount++;
+    const rows = Array.isArray(data) ? data : (Array.isArray(data.logs) ? data.logs : []);
+    for (const row of rows) {
+      const texts = extractGemini(row);
+      if (!texts.length) continue;
+      const ts = row.timestamp || null;
+      for (const t of texts) items.push({ text: t, ts, project: null });
+    }
+  }
+  return { items, fileCount };
 }
 
 // Continue.dev session entry. Each session file is a JSON document at
@@ -174,38 +207,42 @@ function collectContinue() {
   return { items, fileCount };
 }
 
-// Aider stores chat history as markdown in `.aider.chat.history.md` files.
-// Human prompts are lines starting with `####`. We return human prompts split
-// by the marker; the walker only descends into the user's chosen root (defaults
-// to $HOME) and stops at 4 levels to avoid scanning everything.
+// Aider stores chat history as markdown in `.aider.chat.history.md` files
+// (experimental). ONLY `#### ` heading lines are the human's typed prompts —
+// a multi-line prompt is a run of consecutive `#### ` lines. Everything
+// unprefixed (aider's own replies, diffs, shell output) is skipped, and
+// fenced code blocks are skipped wholesale so a quoted `#### ` inside one
+// can't masquerade as a prompt.
 function extractAiderMarkdown(text) {
   if (!text || typeof text !== 'string') return [];
   const out = [];
-  const lines = text.split('\n');
+  const flush = (buf) => { const t = buf.join('\n').trim(); if (!isNoise(t)) out.push(t); };
   let buf = null;
-  for (const line of lines) {
-    if (line.startsWith('#### ')) {
-      if (buf !== null) { const t = buf.trim(); if (!isNoise(t)) out.push(t); }
-      buf = line.slice(5);
-    } else if (buf !== null) {
-      if (line.startsWith('# ') || line.startsWith('> ')) {
-        const t = buf.trim(); if (!isNoise(t)) out.push(t);
-        buf = null;
-      } else {
-        buf += '\n' + line;
-      }
+  let inFence = false;
+  for (const line of text.split('\n')) {
+    if (line.trimStart().startsWith('```')) {           // fence open/close is aider output
+      if (buf) { flush(buf); buf = null; }
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (line.startsWith('#### ') || line === '####') {  // bare '####' = blank line mid-prompt
+      const piece = line === '####' ? '' : line.slice(5);
+      if (buf) buf.push(piece); else buf = [piece];
+    } else if (buf) {                                   // first unprefixed line ends the prompt
+      flush(buf); buf = null;
     }
   }
-  if (buf !== null) { const t = buf.trim(); if (!isNoise(t)) out.push(t); }
+  if (buf) flush(buf);
   return out;
 }
 
 function collectAider() {
-  // Aider drops .aider.chat.history.md in each project root. We look at the
-  // user's homedir + ~/Projects + ~/code + ~/src + ~/dev for these files.
-  // Users with chats elsewhere can `--source aider --path <dir>` if we ever
-  // expose that knob; for now this covers the common cases without scanning
-  // an entire filesystem.
+  // Aider drops .aider.chat.history.md in whatever directory you ran it from.
+  // We check the obvious spots without scanning the whole disk: the homedir
+  // itself, the current directory, and one level under the common project
+  // roots (~/Projects, ~/code, ~/src, ...). Users with chats elsewhere can
+  // `--source aider --path <dir>` if we ever expose that knob.
   const roots = [
     os.homedir(),
     path.join(os.homedir(), 'Projects'),
@@ -215,25 +252,31 @@ function collectAider() {
     path.join(os.homedir(), 'work'),
     path.join(os.homedir(), 'workspace'),
   ];
-  const items = [];
-  let fileCount = 0;
-  const seen = new Set();
+  const candidates = [
+    path.join(os.homedir(), '.aider.chat.history.md'),
+    path.join(process.cwd(), '.aider.chat.history.md'),
+  ];
   for (const r of roots) {
     let entries;
     try { entries = fs.readdirSync(r, { withFileTypes: true }); } catch (_) { continue; }
     for (const e of entries) {
       if (!e.isDirectory() || e.name.startsWith('.')) continue;
-      const projectDir = path.join(r, e.name);
-      const histPath = path.join(projectDir, '.aider.chat.history.md');
-      if (seen.has(histPath)) continue;
-      seen.add(histPath);
-      let data;
-      try { data = fs.readFileSync(histPath, 'utf8'); } catch (_) { continue; }
-      fileCount++;
-      const texts = extractAiderMarkdown(data);
-      const ts = (() => { try { return fs.statSync(histPath).mtime.toISOString(); } catch (_) { return null; } })();
-      for (const t of texts) items.push({ text: t, ts, project: e.name });
+      candidates.push(path.join(r, e.name, '.aider.chat.history.md'));
     }
+  }
+  const items = [];
+  let fileCount = 0;
+  const seen = new Set();
+  for (const histPath of candidates) {
+    if (seen.has(histPath)) continue;
+    seen.add(histPath);
+    let data;
+    try { data = fs.readFileSync(histPath, 'utf8'); } catch (_) { continue; }
+    fileCount++;
+    const texts = extractAiderMarkdown(data);
+    const ts = (() => { try { return fs.statSync(histPath).mtime.toISOString(); } catch (_) { return null; } })();
+    const project = path.basename(path.dirname(histPath)) || null;
+    for (const t of texts) items.push({ text: t, ts, project });
   }
   return { items, fileCount };
 }
@@ -280,7 +323,7 @@ function collectClaude() {
 const SOURCES = {
   claude: { label: 'Claude Code', collect: collectClaude },
   codex: { label: 'Codex', root: path.join(os.homedir(), '.codex', 'sessions'), extract: extractCodex },
-  gemini: { label: 'Gemini CLI', root: path.join(os.homedir(), '.gemini', 'sessions'), extract: extractGemini },
+  gemini: { label: 'Gemini CLI', collect: collectGemini },
   continue: { label: 'Continue.dev', collect: collectContinue },
   aider: { label: 'Aider', collect: collectAider },
 };
@@ -2202,6 +2245,7 @@ const HELP = `good-bot — how nice are you to your AI?
   good-bot --no-history        do not record this run to ~/.good-bot/history.json
   good-bot --forget-history    delete ~/.good-bot/history.json and exit
   good-bot --source <name>     claude | codex | gemini | continue | aider | all   (default: all found locally)
+                               (the gemini + aider readers are experimental, best-effort parsers)
   good-bot --import <file>     grade a Claude Desktop/web/Cowork "Export Data" conversations.json
   good-bot --demo              preview every rank on the current scale
   good-bot --no-copy           don't touch the clipboard
@@ -2455,8 +2499,9 @@ function main() {
       process.stderr.write(
         'No local AI-assistant transcripts found.\n' +
         'Tried: Claude Code (~/.claude/projects), Codex (~/.codex/sessions),\n' +
-        '       Gemini CLI (~/.gemini/sessions), Continue.dev (~/.continue/sessions),\n' +
-        '       Aider (~/**/.aider.chat.history.md).\n' +
+        '       Gemini CLI (~/.gemini/tmp/*/logs.json + ~/.gemini/sessions),\n' +
+        '       Continue.dev (~/.continue/sessions),\n' +
+        '       Aider (.aider.chat.history.md in ~, the current dir, and project roots).\n' +
         'For Claude Desktop/web/Cowork: export your data and run with --import conversations.json\n' +
         'For Cursor / Windsurf: export your chat history and use --import (JSON).\n'
       );
