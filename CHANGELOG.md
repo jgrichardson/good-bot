@@ -8,6 +8,21 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`stats.js` statistical core** — a pure, zero-dependency statistics
+  module (peer of `scales.js` / `achievements.js`) laying the mathematical
+  foundation for the upcoming `--lab` analytics mode. Ships six documented,
+  referenced, deterministic functions — `wilsonInterval` (Wilson 1927 score
+  interval for proportions), `mannKendall` (tie-corrected trend test with
+  normal-approximation p-values), `changepoints` (binary segmentation on
+  mean-shift cost with a BIC-style default penalty), `circularStats`
+  (24h-clock mean direction + Rayleigh uniformity test, Wilkie 1983),
+  `spearman` (rank correlation with mid-rank tie handling and
+  t-approximation p-values), and `linreg` (OLS with a 95% CI on the slope) —
+  plus `mean`/`variance`/`median`/`ranks` helpers and self-implemented
+  erf / normal CDF / Student-t special functions. Every function is NaN-free
+  on degenerate input (empty, length-1, constant series) and verified
+  against textbook / scipy-known values in `test/stats.test.js`. No CLI
+  surface yet; `--lab` will wire it up.
 - **`--roast`** — a 100% local comedy roast of your AI manners. No
   network, no AI calls: a roast-line library keyed to your real stat
   buckets (f-bomb tiers, please/thanks droughts, ALL-CAPS, demand

@@ -43,6 +43,7 @@
     "niceness.js",
     "scales.js",
     "achievements.js",
+    "stats.js",
     "demo-data.js",
     "commands",
     ".claude-plugin",
