@@ -129,6 +129,10 @@ Any quoted snippet that appears on the card — or in the `--ai` sample, or any 
 
 This exists because you may post your card publicly. **Note:** regex redaction cannot catch *semantic* PII (e.g. a client or fund name written in plain prose). That is the deliberate reason the default mode transmits nothing at all — and you should glance at your card before sharing it publicly.
 
+## Machine-readable output (`--json`)
+
+`--json` prints your results as a single JSON object on stdout so teammates can swap cards and run `--compare`. By default it contains **no quotes from your transcripts** — only your persona, score, aggregate counts (messages, pleases, thank-yous, …), achievement ids, source names, and date range. Passing `--include-quotes` opts in to embedding your exhibit quotes, and even then they go through the same `sanitize()` redaction described above. Nothing is transmitted: the JSON goes to your terminal, and sending the file to a teammate is your own manual act.
+
 ## Verify it yourself
 
 ```bash

@@ -8,6 +8,24 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Machine-readable output** — `--json` prints a single self-describing
+  JSON object to stdout (no card, no color codes, no clipboard, no files
+  written, no history entry): package version, `generated_with`, persona
+  (id + name + emoji), score + scale position, aggregate totals (messages,
+  pleases, thank-yous, f-bombs, ALL-CAPS, apologies), unlocked
+  achievements, sources, and date range. Privacy: exhibit quotes are
+  **excluded by default**; `--include-quotes` opts in, and even then the
+  quotes pass through the same `sanitize()` redaction as the card.
+- **Head-to-head, leveled up** — `--compare` now accepts a single file
+  (`good-bot --compare theirs.json` pits the teammate's card against your
+  freshly computed local result), reads both the new `--json` format and
+  legacy `--export json` cards (so does `--leaderboard`), marks a ✓ winner
+  on every stat row (fewest wins the f-bomb and ALL-CAPS rows), adds
+  politeness-ratio and achievements-count rows, warns on a version
+  mismatch instead of refusing, errors kindly on missing / invalid /
+  foreign files (checks `generated_with`), and closes with a verdict +
+  deterministic quip crowning the officially nicer human.
+
 - **Achievements system** — `--achievements` opens a gallery of 24
   unlockable badges (new `achievements.js` module) computed 100% locally
   from stats the engine already produces: 💯 Centurion of Courtesy,
@@ -16,6 +34,43 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   until earned — no spoilers). The report card shows your three rarest
   unlocked badges with a `+N more` teaser, and `--achievements --demo`
   previews the gallery on canned demo stats.
+
+- **Hosted web app** — browser-based quiz + drag-drop import + share +
+  1080×1920 poster at **https://jgrichardson.github.io/good-bot/**. Works on
+  iPhone / Android / desktop with no Node.js or terminal required. 100%
+  client-side (44KB vanilla-JS bundle); `web/src/engine.js` re-exports the
+  scales + scoring from the root project so a new scale reaches both
+  surfaces. Parses both the Claude.ai and ChatGPT export shapes. Auto-deploys
+  to GitHub Pages via `.github/workflows/web-deploy.yml`.
+  ([PR #12](https://github.com/jgrichardson/good-bot/pull/12))
+- **Global niceness barometer (opt-in only)** — speedtest-style "you beat
+  73% of takers" percentile on the web app's result screen. Off by default;
+  fires only on an explicit tap, sends only `{ niceness, scale, source }`,
+  honors `DNT` / `Sec-GPC`. Backed by a Cloudflare Worker + Workers KV
+  histogram (`worker/`), CORS-locked to the GH Pages origin, with an
+  auto-bootstrapping deploy workflow. PRIVACY.md rewritten to disclose it
+  fully. ([PR #13](https://github.com/jgrichardson/good-bot/pull/13))
+- **Community health files** — `CODE_OF_CONDUCT.md` (Contributor Covenant
+  v2.1), `SECURITY.md` (private reporting via GitHub Security Advisories),
+  GitHub issue forms + PR template, a refreshed `CONTRIBUTING.md`, and this
+  changelog backfilled to v0.1.0.
+
+### Changed
+
+- **ALL-CAPS shouting is now a real signal** — `shoutyWordCount()` counts
+  standalone ALL-CAPS words (50+ tech acronyms like JSON/API/SQL excluded),
+  whole-message shouts score +3 mean (was +1), per-word +1 capped at +5,
+  and the card's stats line surfaces the total (`· 12 ALL-CAPS`). The web
+  import path shares the same logic.
+  ([PR #15](https://github.com/jgrichardson/good-bot/pull/15))
+- README rewritten web-first: quick-start tiers, a "For non-developers"
+  walkthrough, and a supported-tools matrix.
+
+### Fixed
+
+- Web app works under the GH Pages `/good-bot/` subpath (relative asset
+  paths). ([PR #14](https://github.com/jgrichardson/good-bot/pull/14))
+- Web footer repo link no longer bounces through a 301 redirect.
 
 ## [0.3.2] — 2026-06-06
 
@@ -49,7 +104,9 @@ reached the registry.
 
 The v0.3 release implements the [IMPROVEMENTS.md](IMPROVEMENTS.md) roadmap
 end-to-end. Every feature respects the zero-dependency, 100%-local privacy
-contract.
+contract. It also rolls up everything that landed on `main` after the
+v0.2.0 commit — `--wrapped`, `--random`, all-time history, the
+baseline-relative timeline, and the negation-aware scorer (bullets below).
 
 ### Added
 
@@ -100,6 +157,23 @@ contract.
   to throw + count attempts, runs the default flow inside the patch, and
   prints `✅ Provably no network call was attempted during this run`.
   ([PR #8](https://github.com/jgrichardson/good-bot/pull/8))
+- **`--wrapped`** — a "Your AI Relationship, Wrapped" 1080×1920 share
+  poster: vector robot hero, persona + niceness bar, stat grid,
+  tone-over-time chart, highlights, and your nicest + spiciest redacted
+  moments. All glyphs are vector so the PNG rasterizes cleanly everywhere.
+  ([`bd2aeda`](https://github.com/jgrichardson/good-bot/commit/bd2aeda))
+- **`--random`** — roll a random scale *and* rank for a different card each
+  run. ([`8d070d3`](https://github.com/jgrichardson/good-bot/commit/8d070d3))
+- **All-time Claude history** — reads `~/.claude/history.jsonl` (the prompt
+  log, not pruned by transcript retention) for full coverage with
+  timestamps, falling back to the projects dir when absent.
+  ([`8d070d3`](https://github.com/jgrichardson/good-bot/commit/8d070d3))
+- **Baseline-relative, multi-dimensional `--timeline`** — periods scored
+  against *your own* baseline (σ moves, EMA smoothing), tone axes (warmth,
+  frustration, terseness, enthusiasm, pressure), plus time-of-day,
+  day-of-week, per-project, and within-session-patience dimensions with
+  volatility and warmest/coolest superlatives.
+  ([`3f2b73b`](https://github.com/jgrichardson/good-bot/commit/3f2b73b))
 
 ### Changed
 
@@ -110,6 +184,20 @@ contract.
   supported AI tool.
 - `prepublishOnly` script gates `npm publish` on `npm test && npm run
   smoke`.
+- **Smarter sentiment** — `scoreMessage` is negation-aware ("no thanks"
+  no longer reads as gratitude), and `analyze()` scores niceness from the
+  net *share* of warm vs. harsh messages so one gushing or one cruel
+  message can't dominate the whole history.
+  ([`67b5a4a`](https://github.com/jgrichardson/good-bot/commit/67b5a4a))
+- **Timeline redesign** — labeled, tier-colored bar charts with
+  eighth-block precision instead of cramped sparklines; hours bucketed
+  into night/morning/afternoon/evening so low-sample hours can't mislead.
+  ([`e209e54`](https://github.com/jgrichardson/good-bot/commit/e209e54))
+- **Characterful persona pick** — within your niceness band, the dominant
+  style nudges the persona (terse → Ron Swanson, apologetic → The
+  Canadian, CAPS → Drill Sergeant) so results have personality instead of
+  clumping on neutral.
+  ([`8d070d3`](https://github.com/jgrichardson/good-bot/commit/8d070d3))
 
 ### Tests
 
@@ -119,12 +207,59 @@ leaderboard + 11 audit).
 
 ## [0.2.0] — 2026-06-02
 
-Initial public release. See the [README](README.md) for the v0.2 feature
-set: Claude Code + Codex ingestion, eight ranking scales, `--ai` opt-in,
-`--timeline`, `--wrapped`, `--svg`, `--badge`, `--import`, redacted exhibits,
-the Claude Code plugin (`/goodbot` slash command), and the npm `bin`
-entry. ([initial commit](https://github.com/jgrichardson/good-bot/commit/bd2aeda))
+The first share-everywhere release. Never tagged on its own (npm publishing
+arrived with 0.3.x) — this was the
+[`d52bc50`](https://github.com/jgrichardson/good-bot/commit/d52bc50) era of
+`npx github:jgrichardson/good-bot`.
+
+### Added
+
+- **Codex CLI ingestion** alongside Claude Code (both auto-detected), a
+  `--source` picker, and `--import` for Claude Desktop / claude.ai web /
+  Cowork "Export data" files (`conversations.json`).
+- **Six new scales** — weather, coffee, D&D alignment, Star Trek, dog
+  breeds, and Hogwarts — joining people + spice; all ladders moved into
+  `scales.js`.
+- **`--timeline`** — niceness sparkline by month and by hour of day, with
+  nicest/meanest callouts.
+- **`--svg` / `--image`** — polished shareable card (SVG, plus PNG when a
+  rasterizer like `rsvg-convert` is available), and **`--badge`** — a
+  Shields-style profile badge.
+- npm-publish plumbing (`publishConfig`, `files`) and the tag-triggered
+  release workflow.
+
+### Tests
+
+Tracked test count: **14 → 19** (Codex extraction, export import,
+sparkline, all scales).
+
+## [0.1.0] — 2026-06-02
+
+The original release
+([`01d444a`](https://github.com/jgrichardson/good-bot/commit/01d444a)).
+GitHub-only — never tagged or published to npm.
+
+### Added
+
+- The core idea: read your local Claude Code transcripts, keep **only the
+  messages you typed**, and grade your tone on a 22-rank persona ladder
+  (Mr. Rogers → Darth Vader) plus the Scoville spice scale.
+- 100%-local default with PII redaction (emails, links, paths, secrets,
+  IPs, phones, amounts) and an optional `--ai` roast via your own local
+  `claude` CLI.
+- `npx` entry point and the `/goodbot` Claude Code plugin.
+- `node:test` suite (14 tests, zero deps), `PRIVACY.md`, the runtime
+  "🔒 100% local" confirmation line, and CI on Node 18/20/22.
+  ([`1768a4c`](https://github.com/jgrichardson/good-bot/commit/1768a4c))
+
+### Fixed
+
+- Exhibit quotes capped to the card width and stripped of doubled wrapping
+  quotes. ([`9de55ca`](https://github.com/jgrichardson/good-bot/commit/9de55ca))
 
 [Unreleased]: https://github.com/jgrichardson/good-bot/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/jgrichardson/good-bot/releases/tag/v0.3.2
+[0.3.1]: https://github.com/jgrichardson/good-bot/releases/tag/v0.3.1
 [0.3.0]: https://github.com/jgrichardson/good-bot/releases/tag/v0.3.0
-[0.2.0]: https://github.com/jgrichardson/good-bot/releases/tag/v0.2.0
+[0.2.0]: https://github.com/jgrichardson/good-bot/commit/d52bc50
+[0.1.0]: https://github.com/jgrichardson/good-bot/commit/01d444a

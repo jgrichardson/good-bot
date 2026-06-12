@@ -256,21 +256,34 @@ Plays in the [asciinema CLI](https://docs.asciinema.org/), the web player, or em
 
 ## 👥 Team mechanics
 
-### Head-to-head
+### ⚔️ Compare with a teammate
 
-Two teammates each run:
+The whole flow is two commands. You:
 
 ```bash
-good-bot --me "Alice" --export json    # writes good-bot-card.json
+good-bot --me "Alice" --json > me.json   # your card as machine-readable JSON
 ```
 
-Then either of them runs:
+Send `me.json` to a teammate (Slack DM, carrier pigeon, whatever). They run:
+
+```bash
+good-bot --compare me.json               # you vs. their freshly computed local result
+```
+
+…and get a head-to-head card: personas side by side, a ✓ winner marker on every
+stat row (fewest wins the f-bomb and ALL-CAPS rows), politeness ratio, badge
+counts, and a verdict + quip crowning the officially nicer human. Two saved
+files work too:
 
 ```bash
 good-bot --compare alice.json bob.json
 ```
 
-Outputs a side-by-side stats grid + 🥇 winner with niceness → pleases+thanks tie-break.
+**Privacy note:** `--json` excludes your quoted exhibits by default — it's just
+persona, score, totals, achievements, sources, and date range. Opt in with
+`--include-quotes` (quotes still pass the same redaction as the card). Cards
+from older versions and `--export json` files compare fine; a version mismatch
+warns and proceeds.
 
 ### Weekly office leaderboard
 
@@ -424,8 +437,11 @@ good-bot --share twitter            compose URL for twitter | bluesky | linkedin
 good-bot --share-open               also open the compose page in your browser
 good-bot --post-webhook <url>       opt-in: POST the (redacted) card to a Slack/Discord webhook
 good-bot --record                   asciinema v2 cast → good-bot-cast.json
+good-bot --json                     machine-readable JSON report → stdout (quotes excluded)
+good-bot --include-quotes           opt-in: include redacted exhibit quotes in --json
 good-bot --export json              good-bot-card.json (for --compare later)
 good-bot --compare a.json b.json    head-to-head: whose AI relationship wins?
+good-bot --compare theirs.json      one file = them vs. YOUR fresh local result
 good-bot --me <name>                label the card
 
 # Team
