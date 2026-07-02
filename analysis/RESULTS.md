@@ -78,6 +78,8 @@ Headline: dead again.
 **Conclusion: this instrument cannot support a "% of people are Darth Vader"
 claim on this corpus, and we won't publish one.**
 
+<p align="center"><img src="https://raw.githubusercontent.com/jgrichardson/good-bot/main/assets/audit-chart.png" alt="Chart: Vader share drops from 13.0% (raw) to 8.0% (pastes removed) to UNPUBLISHABLE (after sample audits)" width="780"></p>
+
 ## What actually survives
 
 The persona ladder is entertainment. Underneath it are dumb, auditable
@@ -98,6 +100,8 @@ clear story about the filtered, hand-typed English conversations:
 So the real finding isn't rage. **It's indifference.** Humanity, on the
 evidence of 834,359 real conversations, treats ChatGPT like a vending
 machine: no abuse, no warmth, just "Define TQM."
+
+<p align="center"><img src="https://raw.githubusercontent.com/jgrichardson/good-bot/main/assets/distribution-chart.png" alt="Chart: the full persona ladder — Switzerland 36.3% and Ron Swanson 28.5% dominate; Mr. Rogers 5.4%, Darth Vader 8.0%, everything else tiny" width="780"></p>
 
 ## What this taught us (the part we'd want to read)
 

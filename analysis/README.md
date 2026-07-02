@@ -22,7 +22,7 @@ Ground rules for every analysis in this directory:
 | Analysis | Corpus | Real users? | Scale | License | Status |
 |---|---|---|---|---|---|
 | [We graded 834,359 ChatGPT conversations — our tool called 1 in 8 of you Darth Vader. It was wrong, twice.](RESULTS.md) | [WildChat-1M](https://huggingface.co/datasets/allenai/WildChat-1M) (AI2) | ✅ in-the-wild | 834,359 convs · 1.94M messages | ODC-BY 1.0 | ✅ Published |
-| [How polite are developers to ChatGPT?](devgpt.md) | [DevGPT](https://zenodo.org/records/16392320) (NAIST-SE, MSR 2024) | ✅ shared by devs on GitHub | ~17k shared conversations | CC-BY 4.0 | 🚧 In progress |
+| [Developers say "please" at twice the rate of everyone else](devgpt.md) | [DevGPT](https://zenodo.org/records/16392320) (NAIST-SE, MSR 2024) | ✅ shared by devs on GitHub | 4,472 convs · 18,943 prompts | CC-BY 4.0 | ✅ Published |
 
 ## Reproduce the WildChat analysis
 
