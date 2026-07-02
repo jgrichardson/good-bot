@@ -103,7 +103,7 @@ export { SCALES, SCALE_META, SCALE_NAMES };
 
 // ---- social share URL builders (mirrors niceness.js) ----------------------
 const REPO_URL = 'https://github.com/jgrichardson/good-bot';
-const NPM_URL = 'https://www.npmjs.com/package/@jgrciv/good-bot';
+const NPM_URL = 'https://www.npmjs.com/package/niceness';
 const WEB_URL = typeof window !== 'undefined' ? window.location.origin : 'https://goodbot.dev';
 
 export const SHARE_PLATFORMS = {

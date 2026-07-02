@@ -2006,8 +2006,8 @@ function appShareCaption(persona, scaleName, app) {
   const tag = persona.tag ? `\n"${persona.tag}"\n` : '\n';
   const a = (app || 'social').toLowerCase();
   const ctaByApp = {
-    instagram: 'Take the quiz: npx @jgrciv/good-bot --quiz',
-    tiktok: 'Take the quiz: npx @jgrciv/good-bot --quiz',
+    instagram: 'Take the quiz: npx niceness --quiz',
+    tiktok: 'Take the quiz: npx niceness --quiz',
   };
   const cta = ctaByApp[a] || ctaByApp.instagram;
   return `I'm ${e}${persona.name} on the AI niceness scale (${scaleName}).${tag}How nice are YOU to your AI?\n\n${cta}\n\n#BeNiceToYourAI #AI #ClaudeCode`;
@@ -3049,7 +3049,7 @@ function buildMcpTools(opts) {
     const r = collectMessages(opts.source || 'all');
     if (!r.items.length) {
       throw new Error('No local AI-assistant transcripts found on this machine. ' +
-        'good-bot reads Claude Code, Codex, Gemini CLI, Continue.dev, and Aider history — see `npx @jgrciv/good-bot --help`.');
+        'good-bot reads Claude Code, Codex, Gemini CLI, Continue.dev, and Aider history — see `npx niceness --help`.');
     }
     const analysis = analyze(r.items);
     const { first, last } = spanOf(r.items);

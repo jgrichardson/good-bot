@@ -24,13 +24,13 @@ test('appShareCaption: includes emoji + tag when present', () => {
 
 test('appShareCaption: includes the npx CTA so viewers can play', () => {
   const c = appShareCaption(PERSONA, 'people', 'instagram');
-  assert.match(c, /npx @jgrciv\/good-bot/);
+  assert.match(c, /npx niceness/);
   assert.match(c, /--quiz/);
 });
 
 test('appShareCaption: tiktok variant emits its own CTA', () => {
   const c = appShareCaption(PERSONA, 'people', 'tiktok');
-  assert.match(c, /npx @jgrciv\/good-bot --quiz/);
+  assert.match(c, /npx niceness --quiz/);
 });
 
 test('printAppShareInstructions: instagram steps name the PNG path + Stories', () => {

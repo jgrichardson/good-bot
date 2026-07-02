@@ -28,9 +28,9 @@ jobs:
         with:
           node-version: 20
       - name: Render leaderboard
-        run: npx -y @jgrciv/good-bot --leaderboard team-cards --no-copy
+        run: npx -y niceness --leaderboard team-cards --no-copy
       - name: Post to Slack/Discord
         if: ${{ env.SLACK_WEBHOOK != '' }}
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        run: npx -y @jgrciv/good-bot --leaderboard team-cards --no-copy --post-webhook "$SLACK_WEBHOOK"
+        run: npx -y niceness --leaderboard team-cards --no-copy --post-webhook "$SLACK_WEBHOOK"

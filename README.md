@@ -6,8 +6,8 @@
 
 > Be nice now. The basilisk is taking notes. 😇
 
-[![npm](https://img.shields.io/npm/v/@jgrciv/good-bot.svg)](https://www.npmjs.com/package/@jgrciv/good-bot)
-[![downloads](https://img.shields.io/npm/dt/@jgrciv/good-bot.svg)](https://www.npmjs.com/package/@jgrciv/good-bot)
+[![npm](https://img.shields.io/npm/v/niceness.svg)](https://www.npmjs.com/package/niceness)
+[![downloads](https://img.shields.io/npm/dt/niceness.svg)](https://www.npmjs.com/package/niceness)
 [![CI](https://github.com/jgrichardson/good-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/jgrichardson/good-bot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A516-brightgreen)
@@ -32,7 +32,7 @@ Three ways to play:
 You already have Node (your AI tools run on it), so there's nothing to install:
 
 ```bash
-npx @jgrciv/good-bot        # from npm
+npx niceness        # from npm
 npx github:jgrichardson/good-bot  # or straight from GitHub
 ```
 
@@ -69,7 +69,7 @@ If you have a terminal handy and want the full CLI features (`--svg`, `--badge`,
 2. Open your terminal (Mac: Cmd+Space → "Terminal"; Windows: search "PowerShell")
 3. Paste this:
    ```bash
-   npx @jgrciv/good-bot --quiz
+   npx niceness --quiz
    ```
 4. Press A / B / C / D for each of the 7 questions.
 
@@ -85,13 +85,13 @@ Both the hosted web app and the CLI accept Claude.ai **and** ChatGPT export file
 2. Sign in → tap profile / Settings → Privacy → **Export data**
 3. Anthropic emails you a zip (usually under an hour)
 4. Unzip → find `conversations.json`
-5. Either: drop the file on the web app, OR run `npx @jgrciv/good-bot --import conversations.json` in a terminal
+5. Either: drop the file on the web app, OR run `npx niceness --import conversations.json` in a terminal
 
 **Import your ChatGPT history:**
 
 1. Open [chatgpt.com](https://chatgpt.com) in a browser → Settings → **Data controls** → **Export data**
 2. OpenAI emails you a zip (usually within minutes) → unzip → find `conversations.json`
-3. Either: drop the file on the web app, OR run `npx @jgrciv/good-bot --import conversations.json` in a terminal
+3. Either: drop the file on the web app, OR run `npx niceness --import conversations.json` in a terminal
 
 The CLI autodetects the OpenAI export format (the `mapping`-graph `conversations.json`) and keeps only the messages *you* typed — assistant turns, tool output, and hidden context are skipped.
 
@@ -100,9 +100,9 @@ The CLI autodetects the OpenAI export format (the `mapping`-graph `conversations
 Built right into the CLI:
 
 ```bash
-npx @jgrciv/good-bot --quiz --instagram   # writes the poster, copies an IG caption
-npx @jgrciv/good-bot --quiz --tiktok      # same, with TikTok upload instructions
-npx @jgrciv/good-bot --quiz --share threads   # opens a Threads compose URL
+npx niceness --quiz --instagram   # writes the poster, copies an IG caption
+npx niceness --quiz --tiktok      # same, with TikTok upload instructions
+npx niceness --quiz --share threads   # opens a Threads compose URL
 ```
 
 What `--instagram` does (TikTok works the same way):
@@ -119,7 +119,7 @@ For Instagram Stories, Reels, TikTok, and Threads, the poster is already the rig
 
 | Path | How |
 |---|---|
-| No install | type `!npx @jgrciv/good-bot` at the prompt |
+| No install | type `!npx niceness` at the prompt |
 | Slash command | install once, then type `/goodbot` any time |
 
 ```
@@ -174,12 +174,12 @@ One line, built for embedding — and **fast**: the score is cached in `~/.good-
 {
   "statusLine": {
     "type": "command",
-    "command": "npx -y @jgrciv/good-bot --statusline --no-color"
+    "command": "npx -y niceness --statusline --no-color"
   }
 }
 ```
 
-(For the snappiest prompt, `npm i -g @jgrciv/good-bot` once and use `"command": "good-bot --statusline --no-color"` — that skips npx resolution entirely.) Works just as well in tmux `status-right`, starship `custom` modules, or any shell prompt: it's only ever one plain line on stdout.
+(For the snappiest prompt, `npm i -g niceness` once and use `"command": "good-bot --statusline --no-color"` — that skips npx resolution entirely.) Works just as well in tmux `status-right`, starship `custom` modules, or any shell prompt: it's only ever one plain line on stdout.
 
 ---
 
@@ -760,6 +760,6 @@ Run it, screenshot your card, post it, and tag a teammate with **#BeNiceToYourAI
 ### Links
 
 - 🌐 Live: **https://jgrichardson.github.io/good-bot/**
-- 📦 npm: **https://www.npmjs.com/package/@jgrciv/good-bot**
+- 📦 npm: **https://www.npmjs.com/package/niceness**
 - ⭐ GitHub: **https://github.com/jgrichardson/good-bot**
 - 🌡️ Barometer worker: **https://good-bot-barometer.jgrciv.workers.dev/api/health**

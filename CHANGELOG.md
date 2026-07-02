@@ -6,6 +6,20 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-07-02
+
+### Changed
+
+- **The dare is now `npx niceness`** — the package moved from the scoped
+  `@jgrciv/good-bot` to the unscoped **`niceness`** name. Unscoped
+  `good-bot` is permanently blocked by npm's punctuation-similarity rule
+  (an existing `goodbot` package), and a scoped name makes for a limp
+  dare. `@jgrciv/good-bot` is deprecated with a pointer and stays
+  installable; the project, repo, and brand remain **good-bot**.
+- Dual bin: installing globally now provides both `niceness` and
+  `good-bot` commands (same entry point).
+- All docs, share captions, and web-app links updated to the new name.
+
 ## [0.4.0] — 2026-06-12
 
 ### Added

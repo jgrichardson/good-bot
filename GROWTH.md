@@ -57,7 +57,7 @@ email, or a network call.
 ### Stage 1 — Developer beachhead (shipped)
 
 Developers are the wedge because their AI transcripts already sit on
-disk, and `npx @jgrciv/good-bot` is a zero-install dare. The surfaces:
+disk, and `npx niceness` is a zero-install dare. The surfaces:
 
 - **CLI** — the core product; one zero-dependency file
 - **npx** — no install, no commitment, 30 seconds to a card
@@ -245,7 +245,7 @@ One line each, with status:
 
 | Channel | Status |
 |---|---|
-| npm publish (`@jgrciv/good-bot`) | ✅ Shipped — v0.3.2 live, `npx @jgrciv/good-bot` works today |
+| npm publish (`niceness`) | ✅ Shipped — `npx niceness` works today (formerly `@jgrciv/good-bot`, now deprecated with a pointer; unscoped `good-bot` is blocked by npm's similarity rule vs `goodbot`) |
 | Homebrew tap | 📋 Planned — `brew install jgrichardson/tap/good-bot` for the npx-averse |
 | Raycast extension | 📋 Planned — your card and grid one ⌘-space away |
 | GitHub profile-README gist widget | 💡 Sketched — `--badge` exists; next is an Action that keeps an auto-updating card gist embedded in your profile |
