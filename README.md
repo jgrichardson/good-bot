@@ -15,6 +15,8 @@
 ![100% local](https://img.shields.io/badge/privacy-100%25%20local-success)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-orange.svg)](CONTRIBUTING.md)
 
+<p align="center"><img src="assets/hero.svg" alt="npx niceness — animated demo: the report card renders in your terminal" width="740"></p>
+
 ---
 
 ## ⚡ Quick start
