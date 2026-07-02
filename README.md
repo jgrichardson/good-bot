@@ -15,7 +15,7 @@
 ![100% local](https://img.shields.io/badge/privacy-100%25%20local-success)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-orange.svg)](CONTRIBUTING.md)
 
-<p align="center"><img src="assets/hero.svg" alt="npx niceness — animated demo: the report card renders in your terminal" width="740"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/jgrichardson/good-bot/main/assets/hero.svg" alt="npx niceness — animated demo: the report card renders in your terminal" width="740"></p>
 
 ---
 
@@ -48,6 +48,25 @@ It scans your local AI-assistant history, grades you locally, prints your card, 
 ```
 
 Then type `/goodbot` any time inside Claude Code.
+
+---
+
+## 🔬 The Lab: we graded 834,359 real ChatGPT conversations
+
+How nice is *humanity* to its AIs? We ran this exact engine over public
+research corpora of real conversations — and audited our own headlines to
+death before publishing:
+
+- **[We graded 834,359 ChatGPT conversations. Our tool called 1 in 8 of you
+  Darth Vader. It was wrong — twice.](analysis/RESULTS.md)** — the WildChat-1M
+  analysis: courtesy is rare (1.8% "please"), hostility is nearly nonexistent
+  (~1 f-bomb per 500,000 hand-typed messages), and the real finding is
+  indifference.
+- **[How polite are developers to ChatGPT?](analysis/devgpt.md)** — the DevGPT
+  analysis (in progress): same engine, on its home turf.
+- **[The Lab index](analysis/README.md)** — methodology, ground rules, and
+  one-command reproduction for every analysis. No user data is involved in any
+  of this — the corpora are public research datasets, credited on each page.
 
 ---
 
