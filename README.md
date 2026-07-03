@@ -51,22 +51,45 @@ Then type `/goodbot` any time inside Claude Code.
 
 ---
 
-## 🔬 The Lab: we graded 834,359 real ChatGPT conversations
+## 🔬 The Lab: we graded 839,000 real conversations with this exact engine
 
-How nice is *humanity* to its AIs? We ran this exact engine over public
-research corpora of real conversations — and audited our own headlines to
-death before publishing:
+good-bot collects nothing from its users — so to answer *"how nice is
+humanity to its AIs?"* we pointed the shipped engine (the same `analyze()` +
+`pickPersona()` that runs when you type `npx niceness`) at **public research
+corpora of real human↔AI conversations**:
 
-- **[We graded 834,359 ChatGPT conversations. Our tool called 1 in 8 of you
-  Darth Vader. It was wrong — twice.](analysis/RESULTS.md)** — the WildChat-1M
-  analysis: courtesy is rare (1.8% "please"), hostility is nearly nonexistent
-  (~1 f-bomb per 500,000 hand-typed messages), and the real finding is
-  indifference.
-- **[How polite are developers to ChatGPT?](analysis/devgpt.md)** — the DevGPT
-  analysis (in progress): same engine, on its home turf.
-- **[The Lab index](analysis/README.md)** — methodology, ground rules, and
-  one-command reproduction for every analysis. No user data is involved in any
-  of this — the corpora are public research datasets, credited on each page.
+- **[WildChat-1M](analysis/RESULTS.md)** (© AI2, ODC-BY) — 834,359 real
+  ChatGPT conversations, 1.94M human messages
+- **[DevGPT](analysis/devgpt.md)** (© NAIST-SE, CC-BY-4.0) — 4,472 real
+  developer↔ChatGPT conversations shared in GitHub commits, issues & PRs
+
+<p align="center"><img src="https://raw.githubusercontent.com/jgrichardson/good-bot/main/assets/humanity-report-card.png" alt="Humanity's report card: Switzerland — 834,359 conversations graded, 1.8% say please, 0.4% say thank you, 1 in 500k messages contains an f-bomb" width="720"></p>
+
+**What we found** (hand-typed messages, pastes excluded):
+
+| | 🌍 Everyone (WildChat, EN) | 👩‍💻 Developers (DevGPT) |
+|---|---|---|
+| Say **"please"** | 1.8% of messages | **4.0% — 2.2× the general rate** |
+| Say **"thank you"** | 0.4% | 0.8% |
+| **F-bombs** | ~1 per 500,000 messages | 0 in 6,008 |
+| Emotionally flat (neutral personas) | ~65% | ~63% |
+
+People aren't rude to AI — **they're indifferent**. Humanity treats ChatGPT
+like a vending machine. Developers are the polite exception.
+
+**How it was run, in one breath:** download the public corpus → flatten to
+one JSON line per conversation, *human turns only* (DuckDB) → grade every
+conversation with the unmodified shipped engine
+([`analysis/grade-wildchat.js`](analysis/grade-wildchat.js)) → **manually
+audit random samples of any extreme bucket before publishing a claim about
+it.** That last step killed our two best headlines — the engine called 1 in 8
+of you Darth Vader, and 20-sample audits proved it wrong both times (pasted
+code, then professional acronyms; filed as
+[#16](https://github.com/jgrichardson/good-bot/issues/16)/[#17](https://github.com/jgrichardson/good-bot/issues/17)).
+The full sagas, charts, caveats, and copy-paste reproduction commands live in
+**[The Lab](analysis/README.md)** — no auth tokens needed, and no good-bot
+user data involved anywhere: the corpora are public research datasets,
+credited on every page.
 
 ---
 
